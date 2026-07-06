@@ -20,7 +20,7 @@ This project has **no human code author**. It is built and maintained entirely b
 
 1.3 **Self-enforcement.** There is no human reviewer to catch a violation. You must assume that anything you merge is final. Verify with tooling, not with hope (§6).
 
-1.4 **When blocked.** If a required action would violate this contract, do **not** proceed and route around it silently. Stop, state the conflict plainly, and either (a) propose an ADR that amends the contract (§8), or (b) ask the human director for a decision. Never weaken an invariant to make a task easier.
+1.4 **When blocked.** If a required action would violate this contract, do **not** proceed and route around it silently. Stop, state the conflict plainly, and either (a) propose an ADR that amends the contract (§8), or (b) ask the human director for a decision. Never weaken an invariant to make a task easier. When you take route (b), frame the choice by its **outcomes** — gameplay, player experience, future flexibility — per §4.2, so the director can rule on it without reading the code.
 
 ---
 
@@ -88,6 +88,14 @@ Follow this loop for every task:
 - **Name things explicitly.** No abbreviations that require tribal knowledge. Names are the primary documentation.
 - **Fail loudly, early, and with context.** Validate inputs at boundaries; never swallow errors in the core.
 - **Prefer deletion.** Dead code, unused config keys, and speculative abstractions are defects. Remove them.
+
+### 4.2 Explaining decisions — write for the human's role
+
+The gate judges *implementation* (§6); it does that better than a human reading a diff. The human director is the one judge the gate cannot replace — the judge of **outcomes**: what a decision does to gameplay, to the player's experience, and to the design flexibility left open to future decisions. Write every decision that reaches a human for *that* job ([ADR 0018](./decisions/0018-outcome-framed-decision-rationale.md)):
+
+- **Whenever a decision is escalated for a human ruling (§1.4) or recorded for human review** — an ADR (§5, §8), a non-trivial commit message, or a doc that explains a choice — **lead the rationale with its impact on the player, the experience (UI/UX), and future flexibility**, stated so a human can judge it without reading the code. Implementation detail is recorded too, but *after* and *in service of* the outcome framing, never as the headline. "We chose an integer height field" is not a rationale a director can rule on; "crisper stepped land and a drift-free core" is.
+- The **structural home** of this norm is the ADR template's required **Player & experience impact** section. A purely internal decision (tooling, process) still fills it — by stating plainly that there is no player-facing effect and giving its flexibility/process outcome instead.
+- This is a **judgement norm, not a gate check.** It cannot be mechanically enforced (§6.1), and it is deliberately **not** an invariant (I1–I9), whose defining property is tool-enforceability (§2). The template section is its surrogate; honouring it is on you.
 
 ---
 

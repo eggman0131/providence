@@ -13,6 +13,10 @@ What problem or force prompted this decision? What constraints (contract invaria
 
 The choice, stated plainly and unambiguously. "We will …".
 
+## Player & experience impact
+
+*Required (contract §4.2).* What this decision changes for the **player**, the **experience (UI/UX)**, and **future design flexibility** — in outcome terms a human director can judge without reading code. What can a player now do, feel, or see that they couldn't? What future design options does it keep open or foreclose? For a purely internal decision (tooling, process) with no reachable player/UX effect, **say so explicitly** and give its flexibility-or-process outcome instead — never leave this blank. Lead with the outcome; implementation detail belongs in **Consequences**, not here.
+
 ## Consequences
 
 - **Positive:** what this makes easier/safer.

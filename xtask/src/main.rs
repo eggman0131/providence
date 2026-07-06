@@ -23,12 +23,13 @@ fn main() -> ExitCode {
     match arg_refs.as_slice() {
         ["setup"] => tools::setup(),
         ["gate"] => gate(),
+        ["explore"] => explore(),
         ["schema"] => schema::check().map_or(ExitCode::FAILURE, |()| ExitCode::SUCCESS),
         ["schema", "--write"] => schema::write(),
         ["doc-review", rest @ ..] => doc_review::run(rest),
         _ => {
             eprintln!(
-                "usage: cargo xtask <setup | gate | schema [--write] \
+                "usage: cargo xtask <setup | gate | explore | schema [--write] \
                  | doc-review [--since <ref>] [--json]>"
             );
             ExitCode::FAILURE
@@ -47,7 +48,8 @@ fn workspace_root() -> PathBuf {
 /// One gate check: display name + the function that runs it.
 type Check = (&'static str, fn() -> Result<(), String>);
 
-/// Run every check in order, report all failures, exit non-zero on any red.
+/// The full gate (ADR 0009): every enforcement check, in order — the single
+/// definition of "green" for `main` and for promotion (§3).
 ///
 /// Order: cheap static checks first, the instrumented test+coverage run last.
 fn gate() -> ExitCode {
@@ -80,8 +82,31 @@ fn gate() -> ExitCode {
             coverage::check,
         ),
     ];
+    run_lane("gate", "", checks)
+}
 
-    println!("gate: {} checks\n", checks.len());
+/// The exploration fast lane (ADR 0016): format + clippy only — one
+/// compile-and-lint pass (clippy type-checks, so no separate `cargo check`).
+/// It deliberately SKIPS determinism/replay, golden-image, coverage,
+/// magic-number, and schema checks. It is **not** a Definition of Done:
+/// `cargo gate` stays the only definition of "green" for `main` (§3).
+fn explore() -> ExitCode {
+    let checks: &[Check] = &[
+        ("format (rustfmt --check)", check_format),
+        ("lint (clippy -D warnings)", check_clippy),
+    ];
+    run_lane(
+        "explore",
+        " — fast lane, NOT the gate; run `cargo gate` before promoting",
+        checks,
+    )
+}
+
+/// Run `checks` in order, printing progress, and return an exit code.
+/// `lane` labels the banner and summary; `note` is appended to the banner.
+/// Shared by the full [`gate`] and the [`explore`] fast lane (ADR 0016).
+fn run_lane(lane: &str, note: &str, checks: &[Check]) -> ExitCode {
+    println!("{lane}: {} checks{note}\n", checks.len());
     let mut failures = Vec::new();
     for (name, check) in checks {
         println!("──► {name}");
@@ -89,21 +114,21 @@ fn gate() -> ExitCode {
             Ok(()) => println!("  ✓ {name}\n"),
             Err(message) => {
                 println!("  ✗ {name}\n    {message}\n");
-                failures.push((*name, message));
+                failures.push(*name);
             }
         }
     }
 
     if failures.is_empty() {
-        println!("gate: GREEN ({} checks)", checks.len());
+        println!("{lane}: GREEN ({} checks)", checks.len());
         ExitCode::SUCCESS
     } else {
         println!(
-            "gate: RED — {} of {} checks failed:",
+            "{lane}: RED — {} of {} checks failed:",
             failures.len(),
             checks.len()
         );
-        for (name, _) in &failures {
+        for name in &failures {
             println!("  ✗ {name}");
         }
         ExitCode::FAILURE

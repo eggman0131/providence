@@ -45,13 +45,23 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    use providence_config::{Params, PlaceholderParams, SimParams};
+    use providence_config::{
+        EconomyParams, ManaMode, ManaParams, OpponentParams, Params, PlaceholderParams, SimParams,
+        WinLossParams,
+    };
 
     use super::Session;
 
     fn params() -> Params {
         Params {
             sim: SimParams {
+                opponent: OpponentParams { enabled: true },
+                economy: EconomyParams {
+                    mana: ManaParams {
+                        mode: ManaMode::Normal,
+                    },
+                },
+                winloss: WinLossParams { enabled: true },
                 placeholder: PlaceholderParams { tick_increment: 1 },
             },
         }

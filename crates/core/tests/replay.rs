@@ -4,7 +4,10 @@
 //! history, and that history's fingerprint must match the committed golden
 //! hash. The golden changes only on an intentional, reviewed core change.
 
-use providence_config::{Params, PlaceholderParams, SimParams};
+use providence_config::{
+    EconomyParams, ManaMode, ManaParams, OpponentParams, Params, PlaceholderParams, SimParams,
+    WinLossParams,
+};
 use providence_core::hash::Fnv1a64;
 use providence_core::rng::SplitMix64;
 use providence_core::state::{State, step};
@@ -20,6 +23,13 @@ const GOLDEN: u64 = 0x804F_981D_B5F9_5BC5;
 fn fixture_params() -> Params {
     Params {
         sim: SimParams {
+            opponent: OpponentParams { enabled: true },
+            economy: EconomyParams {
+                mana: ManaParams {
+                    mode: ManaMode::Normal,
+                },
+            },
+            winloss: WinLossParams { enabled: true },
             placeholder: PlaceholderParams { tick_increment: 1 },
         },
     }

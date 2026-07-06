@@ -9,7 +9,26 @@
 # never a silent misread.
 schema_version = 1
 
+# --- Simulation subsystems (docs/40-parameterisation.md §2.5, ADR 0016) ---
+# Each subsystem is an isolated subtree with its own on/off seam. This is the
+# GOVERNED default: everything on, mana metered. The determinism/replay golden
+# covers this configuration; the sandbox profile (config/sandbox.toml) sits
+# OUTSIDE that contract (ADR 0016 §4).
+
+[sim.opponent]
+# false => no rival deity; the loop runs but nothing casts against the player.
+enabled = true
+
+[sim.economy.mana]
+# Mana generation mode: "normal" | "fast" | "unlimited". "unlimited" is a
+# first-class god-mode for exploration, not a hack (ADR 0016 §3).
+mode = "normal"
+
+[sim.winloss]
+# false => no win/loss evaluation during free play.
+enabled = true
+
 [sim.placeholder]
 # Phase-1 gate scaffolding (contract §7.2): proves the config -> core wiring
-# end-to-end. Deleted when the first real sim.* parameters land in Phase 2.
+# end-to-end. Deleted when the Phase-3 core consumes real subsystem state.
 tick_increment = 1

@@ -37,6 +37,7 @@ You are a young deity contesting a world with a rival deity (the LLM opponent). 
 - Followers generate **faith** (the mana resource) each tick per `sim.economy.*` (e.g. `sim.economy.mana.regen_rate`, worship yield per follower, storage cap `sim.economy.mana.storage_cap`).
 - Faith is the single currency for **all** divine action: land shaping (§3) and powers (§6).
 - The economy is intentionally a tight loop so both sides face the same expand-vs-spend tension.
+- Mana generation has a `sim.economy.mana.mode` (`normal` | `fast` | `unlimited`) — a first-class god-mode for isolated exploration, not a hack ([ADR 0016](./decisions/0016-exploration-lane-and-subsystem-isolation.md); see [`40-parameterisation.md`](./40-parameterisation.md) §7). Each deity reads its own budget, so raising it never leaks into the rival's economy.
 
 ## 6. Divine powers
 
@@ -48,6 +49,7 @@ You are a young deity contesting a world with a rival deity (the LLM opponent). 
 
 - A second god, driven by the **LLM strategic advisor** ([`50-llm-opponent.md`](./50-llm-opponent.md)), plays by the same rules and economy against you.
 - Its intelligence, aggression, cadence, and handicaps are configured under `ai.*` (difficulty, strategy vocabulary, decision cadence). It proposes *intent*; the deterministic engine executes legal actions.
+- The whole subsystem is toggleable via `sim.opponent.enabled`: `false` ⇒ no rival casts against the player, and the rest of the game is unaffected (the isolation seam, [`40-parameterisation.md`](./40-parameterisation.md) §7).
 
 ## 8. Turn / tick loop
 
@@ -58,6 +60,7 @@ You are a young deity contesting a world with a rival deity (the LLM opponent). 
 
 - Victory/defeat conditions and their thresholds are in `sim.winconditions.*` — e.g. eliminating the rival's followers, or crossing a dominance threshold (share of world population/territory) sustained for a configured duration.
 - Multiple win conditions can be toggled per scenario (`content.scenarios.*`), letting different maps play differently as pure content.
+- The evaluation subsystem as a whole is toggleable via `sim.winloss.enabled`: `false` ⇒ no win/loss checks during free play (the isolation seam, [`40-parameterisation.md`](./40-parameterisation.md) §7).
 
 ---
 

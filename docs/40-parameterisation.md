@@ -107,3 +107,31 @@ The promise "tune without touching code" is only real if it is verified:
 4. **Namespace conformance.** The validator rejects any key outside the registered roots and naming convention (§2).
 
 A balance/tuning task is therefore a **config + schema + test** change with **zero** core-source edits — that is the intended, and enforced, workflow.
+
+---
+
+## 7. Subsystem isolation & exploration profiles ([ADR 0016](./decisions/0016-exploration-lane-and-subsystem-isolation.md))
+
+The parameter layer is organised so that **one knob cannot leak into another subsystem** — the structural fix for the coupling cascade that forced the fresh start (unlimited mana silently changed the opponent's economy and broke replay). This is a requirement on the *shape* of `sim.*`, honoured from the layer's first line, not a later add-on.
+
+### 7.1 The `sim.<subsystem>.enabled` seam
+
+7.1.1 Every major simulation subsystem is a **disjoint subtree** under `sim.*` (`sim.opponent.*`, `sim.economy.*`, `sim.winloss.*`, and every future peer). No subsystem's parameters are derived from another's; cross-subsystem influence flows only through explicit seams where a subsystem reads its **own** state/budget, never through shared coupling.
+
+7.1.2 Every toggleable subsystem carries an on/off seam named **`sim.<subsystem>.enabled`** (a `bool`). Disabling one subsystem must **not** break the build or the remaining subsystems — the loop still runs; the disabled subsystem simply does nothing. Reserved seams today:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `sim.opponent.enabled` | `bool` | `false` ⇒ no rival deity; the loop runs, nothing casts against the player. |
+| `sim.economy.mana.mode` | `normal` \| `fast` \| `unlimited` | First-class mana generation mode; `unlimited` is god-mode, not a hack. The economy's control knob (its "off" is not a sandbox use-case, so it exposes `mode` rather than `enabled`). |
+| `sim.winloss.enabled` | `bool` | `false` ⇒ no win/loss evaluation during free play. |
+
+New subsystems follow the same convention. *(A future gate check may assert that every `sim.*` subsystem exposes an `enabled` switch — deferred until more subsystems exist, per ADR 0016.)*
+
+### 7.2 The `sandbox` exploration profile
+
+`config/sandbox.toml` is a **named profile layer** occupying the scenario/content-pack slot of the §4 layering order (`default.toml` → `<profile>.toml` → `local.toml`). It composes the seams above into one selectable "let me play with one mechanic" flag — **opponent off, mana unlimited, win/loss off** — and is selected via the loader's `load_with_profile(dir, Some("sandbox"))`. A named-but-missing profile is a **loud error**, never a silent fall-back to the governed defaults.
+
+### 7.3 Determinism is scoped to the governed configuration
+
+The replay/determinism golden (§6, I3) asserts reproducibility for the **committed default configuration** (`default.toml`: every subsystem on, mana `normal`). Sandbox/exploration-only configuration is explicitly **outside** the deterministic contract — toggling it *cannot* make the replay test fail, because it is not part of what determinism promises ([ADR 0016](./decisions/0016-exploration-lane-and-subsystem-isolation.md) §4). The shipped game's determinism is unchanged; this scopes *what* must be deterministic, it does not weaken the guarantee.

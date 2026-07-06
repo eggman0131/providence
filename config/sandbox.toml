@@ -1,0 +1,26 @@
+# Providence — "sandbox" exploration profile (ADR 0016 §3).
+#
+# The "let me play with one mechanic" layer: opponent off, mana unlimited,
+# win/loss off. Applied as an override on top of default.toml via
+# `load_with_profile(dir, Some("sandbox"))` (layer order: default -> this ->
+# local.toml). It sets ONLY the keys it flips; every other value stays at the
+# governed default.
+#
+# This profile is deliberately OUTSIDE the determinism contract (ADR 0016 §4):
+# toggling it cannot make the replay golden fail, because the golden asserts
+# reproducibility for the governed default configuration only.
+#
+# Why it is safe by construction: with sim.opponent.enabled = false the
+# opponent is not running, so flipping mana to "unlimited" touches nothing the
+# opponent owns; and even when it does run, each deity reads its own budget
+# through the isolation seam, so the mana cascade that forced the reset cannot
+# recur.
+
+[sim.opponent]
+enabled = false
+
+[sim.economy.mana]
+mode = "unlimited"
+
+[sim.winloss]
+enabled = false

@@ -103,9 +103,25 @@ pub fn config_root_from_layers(layers: &[Layer]) -> Result<ConfigRoot, ConfigErr
 }
 
 /// Load params from a config directory: `default.toml` (required) overlaid
-/// by `local.toml` (optional user layer).
+/// by `local.toml` (optional user layer). The governed load path.
 pub fn load_dir(dir: &Path) -> Result<Params, ConfigError> {
+    load_with_profile(dir, None)
+}
+
+/// Load params from a config directory, optionally interposing a named profile
+/// layer between the defaults and the user layer.
+///
+/// Layer order (docs/40-parameterisation.md §4, ADR 0008): `default.toml`
+/// (required) → `<profile>.toml` (the scenario/content-pack slot, when a
+/// profile is named) → `local.toml` (optional user overrides). Later layers
+/// override earlier by key.
+///
+/// The `sandbox` profile (ADR 0016 §3) is loaded as `Some("sandbox")`. A
+/// named-but-missing profile file is an error — a mistyped profile must not
+/// silently fall back to the governed defaults.
+pub fn load_with_profile(dir: &Path, profile: Option<&str>) -> Result<Params, ConfigError> {
     let mut layers = Vec::new();
+
     let default_path = dir.join("default.toml");
     let default_text = fs::read_to_string(&default_path).map_err(|source| ConfigError::Io {
         path: default_path.clone(),
@@ -115,6 +131,18 @@ pub fn load_dir(dir: &Path) -> Result<Params, ConfigError> {
         name: default_path.display().to_string(),
         text: default_text,
     });
+
+    if let Some(profile) = profile {
+        let profile_path = dir.join(format!("{profile}.toml"));
+        let profile_text = fs::read_to_string(&profile_path).map_err(|source| ConfigError::Io {
+            path: profile_path.clone(),
+            source,
+        })?;
+        layers.push(Layer {
+            name: profile_path.display().to_string(),
+            text: profile_text,
+        });
+    }
 
     let local_path = dir.join("local.toml");
     if local_path.exists() {
@@ -133,13 +161,20 @@ pub fn load_dir(dir: &Path) -> Result<Params, ConfigError> {
 
 #[cfg(test)]
 mod tests {
+    use providence_config::ManaMode;
+
     use super::{Layer, SUPPORTED_SCHEMA_VERSION, params_from_layers};
 
+    /// A complete governed default layer: every subsystem present and on,
+    /// mana metered (mirrors the shipped `config/default.toml`).
     fn default_layer() -> Layer {
         Layer {
             name: "default.toml".into(),
             text: format!(
                 "[meta]\nschema_version = {SUPPORTED_SCHEMA_VERSION}\n\n\
+                 [sim.opponent]\nenabled = true\n\n\
+                 [sim.economy.mana]\nmode = \"normal\"\n\n\
+                 [sim.winloss]\nenabled = true\n\n\
                  [sim.placeholder]\ntick_increment = 1\n"
             ),
         }
@@ -149,6 +184,9 @@ mod tests {
     fn default_layer_alone_loads() {
         let params = params_from_layers(&[default_layer()]).expect("default layer must load");
         assert_eq!(params.sim.placeholder.tick_increment, 1);
+        assert!(params.sim.opponent.enabled);
+        assert_eq!(params.sim.economy.mana.mode, ManaMode::Normal);
+        assert!(params.sim.winloss.enabled);
     }
 
     #[test]
@@ -162,6 +200,49 @@ mod tests {
         assert_eq!(
             params.sim.placeholder.tick_increment, 5,
             "later layers override earlier"
+        );
+    }
+
+    #[test]
+    fn mana_mode_round_trips_each_value() {
+        for (authored, expected) in [
+            ("normal", ManaMode::Normal),
+            ("fast", ManaMode::Fast),
+            ("unlimited", ManaMode::Unlimited),
+        ] {
+            let overlay = Layer {
+                name: "local.toml".into(),
+                text: format!("[sim.economy.mana]\nmode = \"{authored}\"\n"),
+            };
+            let params =
+                params_from_layers(&[default_layer(), overlay]).expect("each mana mode must parse");
+            assert_eq!(params.sim.economy.mana.mode, expected);
+        }
+    }
+
+    /// The first-slice guarantee (ADR 0016 §3): flipping the mana mode — even
+    /// all the way to `unlimited` — changes nothing the opponent subsystem
+    /// owns. The coupling cascade that forced the reset is impossible by
+    /// construction, because the subtrees are disjoint. A regression that made
+    /// an opponent parameter depend on mana mode fails here.
+    #[test]
+    fn flipping_mana_mode_leaves_the_opponent_subtree_untouched() {
+        let governed = params_from_layers(&[default_layer()]).expect("default must load");
+        let unlimited = Layer {
+            name: "sandbox.toml".into(),
+            text: "[sim.economy.mana]\nmode = \"unlimited\"\n".into(),
+        };
+        let flipped =
+            params_from_layers(&[default_layer(), unlimited]).expect("mana override must load");
+
+        assert_eq!(
+            flipped.sim.economy.mana.mode,
+            ManaMode::Unlimited,
+            "the mana knob did move"
+        );
+        assert_eq!(
+            governed.sim.opponent, flipped.sim.opponent,
+            "mana mode must not be an input to anything the opponent owns (ADR 0016 §3)"
         );
     }
 
@@ -180,6 +261,16 @@ mod tests {
     }
 
     #[test]
+    fn unknown_mana_mode_is_rejected() {
+        let overlay = Layer {
+            name: "local.toml".into(),
+            text: "[sim.economy.mana]\nmode = \"infinite\"\n".into(),
+        };
+        params_from_layers(&[default_layer(), overlay])
+            .expect_err("an unrecognised mana mode must fail deserialisation");
+    }
+
+    #[test]
     fn out_of_range_values_are_rejected() {
         let overlay = Layer {
             name: "local.toml".into(),
@@ -193,7 +284,12 @@ mod tests {
     fn schema_version_mismatch_is_a_migration_error() {
         let bad = Layer {
             name: "default.toml".into(),
-            text: "[meta]\nschema_version = 999\n\n[sim.placeholder]\ntick_increment = 1\n".into(),
+            text: "[meta]\nschema_version = 999\n\n\
+                 [sim.opponent]\nenabled = true\n\n\
+                 [sim.economy.mana]\nmode = \"normal\"\n\n\
+                 [sim.winloss]\nenabled = true\n\n\
+                 [sim.placeholder]\ntick_increment = 1\n"
+                .into(),
         };
         let err = params_from_layers(&[bad]).expect_err("version mismatch must be an error");
         assert!(

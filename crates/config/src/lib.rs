@@ -21,15 +21,76 @@ pub struct Params {
 }
 
 /// `sim.*` — parameters governing the deterministic core.
+///
+/// Organised as **one disjoint subtree per simulation subsystem** so that a
+/// knob in one subsystem cannot reach another — the structural fix for the
+/// coupling cascade that forced the fresh start ([ADR 0016](../../docs/decisions/0016-exploration-lane-and-subsystem-isolation.md)).
+/// Every subsystem carries an on/off seam (`sim.<subsystem>.enabled`); a
+/// subsystem reads its *own* state, never another's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimParams {
-    /// `sim.placeholder.*` — Phase-1 gate-scaffolding parameters.
+    /// `sim.opponent.*` — the rival deity subsystem. Disable it and the loop
+    /// still runs; nothing casts against the player (ADR 0016 §3).
+    pub opponent: OpponentParams,
+    /// `sim.economy.*` — the faith/mana economy subsystem.
+    pub economy: EconomyParams,
+    /// `sim.winloss.*` — the win/loss evaluation subsystem.
+    pub winloss: WinLossParams,
+    /// `sim.placeholder.*` — Phase-1 gate-scaffolding parameters; the core's
+    /// sole consumed value until Phase 3 gives it real subsystem state, then
+    /// deleted (prefer deletion, contract §4.1).
     pub placeholder: PlaceholderParams,
 }
 
+/// `sim.opponent.*` — the rival-deity subsystem (ADR 0016 §3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpponentParams {
+    /// `sim.opponent.enabled` — `false` ⇒ no rival deity; the loop runs but
+    /// nothing casts against the player. The general isolation seam.
+    pub enabled: bool,
+}
+
+/// `sim.economy.*` — the faith/mana economy subsystem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EconomyParams {
+    /// `sim.economy.mana.*` — the mana resource.
+    pub mana: ManaParams,
+}
+
+/// `sim.economy.mana.*` — the mana resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManaParams {
+    /// `sim.economy.mana.mode` — mana generation mode; first-class god-mode,
+    /// not a hack (ADR 0016 §3). `Unlimited` is the sandbox exploration knob.
+    pub mode: ManaMode,
+}
+
+/// `sim.economy.mana.mode` — how mana is generated for the player's economy.
+///
+/// A subsystem reads its *own* budget (ADR 0016 §3): flipping this to
+/// [`ManaMode::Unlimited`] for exploration must not alter what the opponent
+/// subsystem owns — the core routes each deity's spend through its own state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManaMode {
+    /// Ordinary metered mana — the governed default.
+    Normal,
+    /// Accelerated regeneration for quicker iteration.
+    Fast,
+    /// Effectively infinite mana; the sandbox god-mode value.
+    Unlimited,
+}
+
+/// `sim.winloss.*` — the win/loss evaluation subsystem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WinLossParams {
+    /// `sim.winloss.enabled` — `false` ⇒ no win/loss evaluation during free
+    /// play. The general isolation seam.
+    pub enabled: bool,
+}
+
 /// `sim.placeholder.*` — placeholder parameters proving the config → core
-/// wiring end-to-end (contract §7.2). Deleted when the first real `sim.*`
-/// parameters land in Phase 2 (prefer deletion, contract §4.1).
+/// wiring end-to-end (contract §7.2). Deleted when the Phase-3 core consumes
+/// real subsystem state (prefer deletion, contract §4.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlaceholderParams {
     /// `sim.placeholder.tick_increment` — ticks the placeholder state

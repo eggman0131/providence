@@ -24,8 +24,62 @@
       "description": "`sim.*` — deterministic-simulation parameters.",
       "type": "object",
       "properties": {
+        "economy": {
+          "description": "`sim.economy.*` — the faith/mana economy subsystem.",
+          "type": "object",
+          "properties": {
+            "mana": {
+              "description": "`sim.economy.mana.*` — the mana resource.",
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "description": "`sim.economy.mana.mode` — mana generation mode (ADR 0016 §3).\nHot-reloadable (a pure balance/exploration value).",
+                  "oneOf": [
+                    {
+                      "description": "Ordinary metered mana — the governed default.",
+                      "type": "string",
+                      "const": "normal"
+                    },
+                    {
+                      "description": "Accelerated regeneration for quicker iteration.",
+                      "type": "string",
+                      "const": "fast"
+                    },
+                    {
+                      "description": "Effectively infinite mana; the sandbox god-mode value.",
+                      "type": "string",
+                      "const": "unlimited"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "mode"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mana"
+          ]
+        },
+        "opponent": {
+          "description": "`sim.opponent.*` — the rival-deity subsystem.",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "`sim.opponent.enabled` — `false` ⇒ no rival deity casts against the\nplayer. The general `sim.<subsystem>.enabled` isolation seam.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ]
+        },
         "placeholder": {
-          "description": "`sim.placeholder.*` — Phase-1 gate scaffolding (contract §7.2);\ndeleted when real `sim.*` parameters land in Phase 2.",
+          "description": "`sim.placeholder.*` — Phase-1 gate scaffolding (contract §7.2);\ndeleted when the Phase-3 core consumes real subsystem state.",
           "type": "object",
           "properties": {
             "tick_increment": {
@@ -39,10 +93,27 @@
           "required": [
             "tick_increment"
           ]
+        },
+        "winloss": {
+          "description": "`sim.winloss.*` — the win/loss evaluation subsystem.",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "`sim.winloss.enabled` — `false` ⇒ no win/loss evaluation during free\nplay. The general `sim.<subsystem>.enabled` isolation seam.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ]
         }
       },
       "additionalProperties": false,
       "required": [
+        "opponent",
+        "economy",
+        "winloss",
         "placeholder"
       ]
     }

@@ -160,6 +160,13 @@ enabled = true       # draw the overlay when the debug-hud feature is built in
 show_camera = true   # show the camera-pose section (yaw/pitch/distance, eye)
 show_reticle = true  # show the reticle vertex (x, y) + height section
 
+[render.animation]
+# How a shaping change settles on screen (ADR 0022 §5; issue #9/#10 Phase 3).
+# Render-only: the renderer eases the VISUAL surface from its old shape to the
+# command's new one over this many milliseconds — pure presentation, never a
+# core height. 0 snaps instantly (the Phase-2 behaviour).
+duration_ms = 250.0
+
 # --- Input mapping (docs/40-parameterisation.md §2.2, ADR 0022) ---
 # input.* is the interactive workbench's control mapping. Like render.*, it is
 # NON-deterministic and sits OUTSIDE the determinism boundary: the loader

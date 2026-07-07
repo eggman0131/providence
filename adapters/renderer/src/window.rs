@@ -9,6 +9,7 @@
 //! never change a height.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use providence_config::{InputParams, PaletteParams, PointerButton, RenderParams};
 use providence_ports::{RendererPort, SimDriver, TerrainFrame};
@@ -18,6 +19,7 @@ use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+use crate::anim::{MeshTween, progress};
 use crate::camera::OrbitController;
 use crate::context::{self, Gpu};
 use crate::error::RendererError;
@@ -214,6 +216,18 @@ struct PressGesture {
     motion_px: f32,
 }
 
+/// An in-flight shaping animation (ADR 0022 §5; issue #9/#10 Phase 3): the tween
+/// from the old drawn surface to the post-command one, and when it started. The
+/// only wall-clock in the whole path lives here, in the adapter — the elapsed
+/// time decides *how far* the visual surface has settled, never anything the
+/// core computes (I3).
+struct Animation {
+    /// The old→new surface tween; `at(fraction)` is the frame to draw.
+    tween: MeshTween,
+    /// When the animation began, for the elapsed-time fraction.
+    start: Instant,
+}
+
 /// Live GPU state for the open window: surface, device/queue, the prepared
 /// scene, the depth buffer sized to the surface, and the interactive camera
 /// controller with its in-flight drag gesture (issue #8 Phase 2).
@@ -229,6 +243,15 @@ struct WindowState {
     drag: DragState,
     /// The in-flight press gesture, if a button is down (issue #9 Phase 2).
     press: Option<PressGesture>,
+    /// The CPU copy of the surface currently drawn — the `from` anchor a new
+    /// shaping animation eases out of (issue #9/#10 Phase 3).
+    drawn: Mesh,
+    /// The in-flight shaping animation, if one is settling (issue #9/#10
+    /// Phase 3); `None` when the surface is at rest.
+    animation: Option<Animation>,
+    /// `render.animation.duration_ms` — how long a shaping change settles; 0
+    /// snaps instantly.
+    animation_duration_ms: f32,
     /// The shaping controls (`input.shape.*`): bindings + click-vs-drag slack.
     input: InputParams,
     /// The palette, so a shaping command can rebuild the mesh from the fresh
@@ -303,6 +326,9 @@ impl WindowState {
             controller: OrbitController::from_params(&params.camera),
             drag: DragState::default(),
             press: None,
+            drawn: mesh.clone(),
+            animation: None,
+            animation_duration_ms: params.animation.duration_ms,
             input: input.clone(),
             palette: params.palette.clone(),
             grid: GridSnapshot::default(),
@@ -389,14 +415,62 @@ impl WindowState {
             return; // a no-op: ceiling, out of bounds, or an immovable refusal
         }
 
-        // Pull the fresh snapshot and rebuild what is drawn.
+        // Pull the fresh snapshot and rebuild the target surface. Picking tracks
+        // the new *logical* heights immediately (the grid), while the *drawn*
+        // surface eases toward the target over `render.animation.duration_ms`.
         let (width, height) = (driver.width(), driver.height());
         let heights = driver.heights().to_vec();
         let frame = TerrainFrame::new(width, height, &heights);
-        let mesh = build_mesh(&frame, self.vertical_scale, &self.palette);
+        let target = build_mesh(&frame, self.vertical_scale, &self.palette);
         self.grid = GridSnapshot::from_frame(&frame);
-        self.scene.set_mesh(&self.device, &mesh);
+        self.start_animation(target);
+    }
+
+    /// Begin easing the drawn surface toward `target` (ADR 0022 §5; issue
+    /// #9/#10 Phase 3), or snap to it when animation is disabled
+    /// (`render.animation.duration_ms == 0`). Either way a redraw is requested;
+    /// an in-flight animation then drives its own redraws until it settles.
+    fn start_animation(&mut self, target: Mesh) {
+        if self.animation_duration_ms <= 0.0 {
+            self.scene.set_mesh(&self.device, &target);
+            self.drawn = target;
+            self.animation = None;
+        } else {
+            let from = self.drawn.clone();
+            self.animation = Some(Animation {
+                tween: MeshTween::new(from, target),
+                start: Instant::now(),
+            });
+        }
         self.window.request_redraw();
+    }
+
+    /// Advance any in-flight shaping animation to the current wall-clock time,
+    /// re-uploading the eased surface (ADR 0022 §5). Returns `true` while the
+    /// animation is still settling, so the caller keeps requesting redraws; on
+    /// the final frame it snaps exactly onto the target and clears the state.
+    /// The wall-clock is read here and nowhere near the core (I3).
+    fn advance_animation(&mut self) -> bool {
+        let (mesh, done) = {
+            let Some(anim) = self.animation.as_ref() else {
+                return false;
+            };
+            let elapsed_ms = anim.start.elapsed().as_secs_f32() * 1000.0;
+            let fraction = progress(elapsed_ms, self.animation_duration_ms);
+            let done = fraction >= 1.0;
+            let mesh = if done {
+                anim.tween.target().clone()
+            } else {
+                anim.tween.at(fraction)
+            };
+            (mesh, done)
+        };
+        self.scene.set_mesh(&self.device, &mesh);
+        self.drawn = mesh;
+        if done {
+            self.animation = None;
+        }
+        !done
     }
 
     /// Turn cursor motion into an orbit or pan while a button is held, and accrue
@@ -445,6 +519,14 @@ impl WindowState {
 
     fn render(&mut self) {
         use wgpu::CurrentSurfaceTexture;
+
+        // Advance any in-flight shaping animation to now and re-upload the eased
+        // surface (ADR 0022 §5; issue #9/#10 Phase 3). Keep the redraw chain
+        // alive until it settles; requesting eagerly means a skipped frame below
+        // (a lost surface) still gets another shot.
+        if self.advance_animation() {
+            self.window.request_redraw();
+        }
 
         // Refresh the uniforms from the live controller so any orbit/pan/zoom
         // since the last frame shows (issue #8 Phase 2). Cheap: one small

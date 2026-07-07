@@ -24,6 +24,7 @@
 // signal for this crate.
 #![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 
+pub mod anim;
 pub mod camera;
 pub mod color;
 pub mod context;
@@ -42,10 +43,12 @@ pub mod window;
 #[cfg(feature = "debug-hud")]
 pub mod hud;
 
+pub use anim::MeshTween;
 pub use camera::{Camera, OrbitController};
 pub use error::RendererError;
 pub use headless::HeadlessRenderer;
 pub use input::{ShapeAction, is_shaping_click, shape_action};
+pub use mesh::{Mesh, build_mesh};
 pub use pick::{PickedVertex, Ray, cursor_ndc};
 pub use window::WindowRenderer;
 

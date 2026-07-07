@@ -8,8 +8,8 @@
 
 use garde::Validate;
 use providence_config::{
-    BackgroundParams, CameraParams, ContentParams, EconomyParams, HudParams, InputParams,
-    LightingParams, ManaMode, ManaParams, MeshParams, MountainContent, OpponentParams,
+    AnimationParams, BackgroundParams, CameraParams, ContentParams, EconomyParams, HudParams,
+    InputParams, LightingParams, ManaMode, ManaParams, MeshParams, MountainContent, OpponentParams,
     PaletteParams, Params, PlaceholderParams, PointerButton, RaiseParams, RenderParams,
     RockContent, Shape, ShapeInputParams, ShoreContent, SimParams, TerrainContent, TerrainParams,
     TreeContent, WinLossParams, WindowParams, WorldgenParams,
@@ -330,6 +330,10 @@ pub struct RenderSection {
     /// Phase 3).
     #[garde(dive)]
     pub hud: HudSection,
+    /// `render.animation.*` — the shaping-change animation (ADR 0022 §5; issue
+    /// #9/#10 Phase 3).
+    #[garde(dive)]
+    pub animation: AnimationSection,
 }
 
 /// `render.camera.*` — the workbench view camera (ADR 0020 §3). Its initial
@@ -462,6 +466,17 @@ pub struct HudSection {
     /// `render.hud.show_reticle` — show the reticle vertex/height section.
     #[garde(skip)]
     pub show_reticle: bool,
+}
+
+/// `render.animation.*` — the shaping-change animation (ADR 0022 §5; issue
+/// #9/#10 Phase 3). Render-only presentation timings.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct AnimationSection {
+    /// `render.animation.duration_ms` — settle time (ms) for a shaping change.
+    /// Non-negative; 0 snaps instantly.
+    #[garde(range(min = 0.0))]
+    pub duration_ms: f32,
 }
 
 /// `input.*` (docs/40-parameterisation.md §2.2) — input mapping for the
@@ -613,6 +628,9 @@ impl ConfigRoot {
                 enabled: self.render.hud.enabled,
                 show_camera: self.render.hud.show_camera,
                 show_reticle: self.render.hud.show_reticle,
+            },
+            animation: AnimationParams {
+                duration_ms: self.render.animation.duration_ms,
             },
         }
     }

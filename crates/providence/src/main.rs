@@ -15,11 +15,12 @@
 //!   The optional orbit (yaw/pitch degrees, distance) drives the Phase-2 camera
 //!   for the multi-angle self-check; omitted, it uses the configured pose. No
 //!   display required.
-//! - `capture-shape [BEFORE AFTER]` — the display-free proof of the interactive
-//!   shaping seam (ADR 0022): submit a scripted `TerrainCommand` through the
-//!   same `SimDriver` submit + snapshot-pull path the event loop uses and
-//!   capture before/after PNGs, so the land is *observed* to change without a
-//!   display. No display required.
+//! - `capture-shape [BEFORE MID AFTER]` — the display-free proof of the
+//!   interactive shaping seam and its animation (ADR 0022): submit a scripted
+//!   `TerrainCommand` through the same `SimDriver` submit + snapshot-pull path
+//!   the event loop uses, then capture the old→new surface tween at t=0/0.5/1 —
+//!   so both the land changing *and* the render-only interpolation (§5) are
+//!   observed without a display. No display required.
 //!
 //! The composition root is the only crate permitted to name concrete adapters
 //! (docs/20-architecture.md §5.2): it projects `render.*` into `RenderParams`,
@@ -36,7 +37,9 @@ use providence_core::terrain::{
     Feature, FeatureMap, HeightField, TerrainType, classify_vertex, generate, place_features, raise,
 };
 use providence_ports::{RendererPort, SimDriver, TerrainCommand, TerrainFrame};
-use providence_renderer::{HeadlessRenderer, NoopRenderer, OrbitController, WindowRenderer};
+use providence_renderer::{
+    HeadlessRenderer, Mesh, MeshTween, NoopRenderer, OrbitController, WindowRenderer, build_mesh,
+};
 
 /// Fixed demo values for the smoke run — not behavioural config (the smoke
 /// run is dev tooling, not gameplay; real sessions take seed and length
@@ -66,7 +69,7 @@ fn main() -> ExitCode {
         Some(other) => {
             eprintln!(
                 "providence: unknown subcommand `{other}` (try: \
-                 workbench | capture [PATH [YAW PITCH DISTANCE]] | capture-shape [BEFORE AFTER])"
+                 workbench | capture [PATH [YAW PITCH DISTANCE]] | capture-shape [BEFORE MID AFTER])"
             );
             ExitCode::FAILURE
         }
@@ -354,30 +357,41 @@ fn run_capture(args: &[String]) -> ExitCode {
     }
 }
 
-/// Default before/after PNG paths for a `capture-shape` with no explicit paths.
+/// Default before/mid/after PNG paths for a `capture-shape` with no explicit
+/// paths.
 const DEFAULT_SHAPE_BEFORE: &str = "target/workbench-before.png";
+const DEFAULT_SHAPE_MID: &str = "target/workbench-mid.png";
 const DEFAULT_SHAPE_AFTER: &str = "target/workbench-after.png";
 /// How many raises the headless shaping proof applies — enough to grow a clearly
 /// visible stepped cone out of the sea (dev tooling, not gameplay).
 const SHAPE_PROOF_RAISES: u32 = 3;
+/// The mid-animation fraction the proof captures — the interpolated still that
+/// shows the surface part-way through settling (ADR 0022 §5; Phase 3).
+const SHAPE_PROOF_MID_FRACTION: f32 = 0.5;
 
-/// The display-free proof of the interactive pick→command→redraw path
-/// (ADR 0022; the Definition-of-Done observation, contract §3). Builds a
-/// [`WorkbenchSession`], captures a before PNG, submits a scripted sculpt through
-/// the **same** [`SimDriver`] submit + snapshot-pull path the window event loop
-/// uses, then captures an after PNG — so the land is *observed* to change
+/// The display-free proof of the interactive pick→command→redraw path and its
+/// animation (ADR 0022; the Definition-of-Done observation, contract §3). Builds
+/// a [`WorkbenchSession`], submits a scripted sculpt through the **same**
+/// [`SimDriver`] submit + snapshot-pull path the window event loop uses, then
+/// builds the same old→new surface [`MeshTween`] the window animates and captures
+/// **three stills** — before (t=0), mid-settle (t=0.5), after (t=1) — so both the
+/// land *changing* and the render-only *interpolation* (ADR 0022 §5) are observed
 /// without a display. The cursor→vertex pick half of the path is unit-tested in
-/// the renderer gate (`pick`/`input`); this proves the command→submit→redraw
-/// half end-to-end.
+/// the renderer gate (`pick`/`input`); the tween maths in `anim`.
 fn run_capture_shape(args: &[String]) -> ExitCode {
-    let (before_path, after_path) = match args {
+    let (before_path, mid_path, after_path) = match args {
         [] => (
             PathBuf::from(DEFAULT_SHAPE_BEFORE),
+            PathBuf::from(DEFAULT_SHAPE_MID),
             PathBuf::from(DEFAULT_SHAPE_AFTER),
         ),
-        [before, after] => (PathBuf::from(before), PathBuf::from(after)),
+        [before, mid, after] => (
+            PathBuf::from(before),
+            PathBuf::from(mid),
+            PathBuf::from(after),
+        ),
         _ => {
-            eprintln!("providence: usage: capture-shape [BEFORE_PNG AFTER_PNG]");
+            eprintln!("providence: usage: capture-shape [BEFORE_PNG MID_PNG AFTER_PNG]");
             return ExitCode::FAILURE;
         }
     };
@@ -400,14 +414,12 @@ fn run_capture_shape(args: &[String]) -> ExitCode {
         "  before: {}",
         census_line(session.heights(), width, height, &params)
     );
-    if let Err(code) = capture_snapshot(&session, &render, &before_path) {
-        return code;
-    }
+    let before_heights = session.heights().to_vec();
 
     // Find a guaranteed-shapeable vertex — a flat sea patch carries no immovables
     // (ADR 0017 §5), so a raise there always moves the land, never refused.
     let Some((sx, sy)) = flat_sea_patch(
-        session.heights(),
+        &before_heights,
         width,
         height,
         params.sim.worldgen.sea_level,
@@ -426,33 +438,55 @@ fn run_capture_shape(args: &[String]) -> ExitCode {
         "  after:  {}",
         census_line(session.heights(), width, height, &params)
     );
-    if let Err(code) = capture_snapshot(&session, &render, &after_path) {
-        return code;
+    let after_heights = session.heights().to_vec();
+
+    // Build the same old→new surface tween the window animates (ADR 0022 §5) and
+    // capture three eased stills. Unchanged vertices sit still through the tween,
+    // so only the sculpted cone moves; the mid still shows it part-way risen.
+    let from = build_mesh(
+        &TerrainFrame::new(width, height, &before_heights),
+        render.mesh.vertical_scale,
+        &render.palette,
+    );
+    let to = build_mesh(
+        &TerrainFrame::new(width, height, &after_heights),
+        render.mesh.vertical_scale,
+        &render.palette,
+    );
+    let tween = MeshTween::new(from, to);
+    let stills = [
+        (0.0_f32, &before_path),
+        (SHAPE_PROOF_MID_FRACTION, &mid_path),
+        (1.0_f32, &after_path),
+    ];
+    for (fraction, path) in stills {
+        if let Err(code) = capture_mesh(tween.at(fraction), &render, path) {
+            return code;
+        }
     }
 
     println!(
         "  sculpted vertex ({sx}, {sy}); {n} raises → revision {before_revision}→{after_revision}, \
-         {logged} commands logged; before {before}, after {after} \
-         (the land changed — a session is seed + params + log, replayable bit-for-bit)",
+         {logged} commands logged; stills before {before} (t=0), mid {mid} (t={frac}), after {after} (t=1) \
+         — the drawn surface eases old→new (a session is seed + params + log, replayable bit-for-bit)",
         n = SHAPE_PROOF_RAISES,
         after_revision = session.revision(),
         logged = session.log().len(),
+        frac = SHAPE_PROOF_MID_FRACTION,
         before = before_path.display(),
+        mid = mid_path.display(),
         after = after_path.display(),
     );
     ExitCode::SUCCESS
 }
 
-/// Capture the session's current snapshot to a PNG through the headless renderer
-/// — the same `present` → build-mesh path the window uses each redraw (ADR 0022).
-fn capture_snapshot(
-    session: &WorkbenchSession,
-    render: &RenderParams,
-    path: &Path,
-) -> Result<(), ExitCode> {
-    let frame = TerrainFrame::new(session.width(), session.height(), session.heights());
+/// Capture a pre-built [`Mesh`] to a PNG through the headless renderer
+/// (ADR 0022 §5): the shaping stills are eased [`MeshTween`] frames, so this
+/// bypasses `present`'s height→mesh step via `present_mesh` — the display-free
+/// way to see a mid-animation surface.
+fn capture_mesh(mesh: Mesh, render: &RenderParams, path: &Path) -> Result<(), ExitCode> {
     let mut renderer = HeadlessRenderer::new(render.clone());
-    renderer.present(frame);
+    renderer.present_mesh(mesh);
     renderer.capture(path).map_err(|error| {
         eprintln!("providence: capture error: {error}");
         ExitCode::FAILURE

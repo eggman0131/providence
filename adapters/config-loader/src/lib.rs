@@ -233,7 +233,8 @@ mod tests {
         rgb = [0.05, 0.06, 0.09]\n\n\
         [render.mesh]\nvertical_scale = 1.0\n\n\
         [render.window]\nwidth = 1280\nheight = 720\n\n\
-        [render.hud]\nenabled = true\nshow_camera = true\nshow_reticle = true\n";
+        [render.hud]\nenabled = true\nshow_camera = true\nshow_reticle = true\n\n\
+        [render.animation]\nduration_ms = 250.0\n";
 
     /// The `[input.*]` block shared by the fixtures — mirrors the shipped
     /// `config/default.toml` so the default layer stays complete now that
@@ -441,8 +442,22 @@ mod tests {
             (true, true, true),
             "the debug/HUD toggles project through (ADR 0015; issue #8 Phase 3)"
         );
+        assert!(
+            approx(render.animation.duration_ms, 250.0),
+            "the shaping-animation duration projects through (ADR 0022 §5; Phase 3)"
+        );
         // Exercise Debug of the projected RenderParams tree.
         assert!(format!("{render:?}").contains("RenderParams"));
+    }
+
+    #[test]
+    fn a_negative_animation_duration_is_rejected() {
+        let overlay = Layer {
+            name: "local.toml".into(),
+            text: "[render.animation]\nduration_ms = -1.0\n".into(),
+        };
+        render_params_from_layers(&[default_layer(), overlay])
+            .expect_err("a negative animation duration must fail garde validation");
     }
 
     #[test]

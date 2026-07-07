@@ -64,6 +64,15 @@ impl HeadlessRenderer {
         self.view = Some(camera);
     }
 
+    /// Present a pre-built [`Mesh`] directly, bypassing [`present`]'s height →
+    /// mesh step (ADR 0022 §5; issue #9/#10 Phase 3). The composition root uses
+    /// this to capture a **mid-animation still**: a [`MeshTween`](crate::anim::MeshTween)
+    /// eased to a chosen fraction, so the interpolation is proven without a
+    /// display. The static path still uses [`present`](RendererPort::present).
+    pub fn present_mesh(&mut self, mesh: Mesh) {
+        self.mesh = Some(mesh);
+    }
+
     /// Render the most recently presented frame to a PNG at `path`. Errors if
     /// no frame has been presented yet, or if any GPU/read-back step fails.
     pub fn capture(&self, path: &Path) -> Result<(), RendererError> {

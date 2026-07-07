@@ -180,6 +180,22 @@
       "description": "`render.*` — presentation parameters for the workbench renderer\n(ADR 0020 §4). Projected into a standalone [`RenderParams`] — **not**\ninto the core-injected [`Params`], because presentation is outside the\ndeterminism boundary (docs/40-parameterisation.md §2.2).",
       "type": "object",
       "properties": {
+        "animation": {
+          "description": "`render.animation.*` — the shaping-change animation (ADR 0022 §5; issue\n#9/#10 Phase 3).",
+          "type": "object",
+          "properties": {
+            "duration_ms": {
+              "description": "`render.animation.duration_ms` — settle time (ms) for a shaping change.\nNon-negative; 0 snaps instantly.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "duration_ms"
+          ]
+        },
         "background": {
           "description": "`render.background.*` — the surface the world is drawn against.",
           "type": "object",
@@ -438,7 +454,8 @@
         "background",
         "mesh",
         "window",
-        "hud"
+        "hud",
+        "animation"
       ]
     },
     "sim": {

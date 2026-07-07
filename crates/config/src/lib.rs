@@ -295,6 +295,10 @@ pub struct RenderParams {
     /// Phase 3). Config is always present; the overlay itself compiles only
     /// under the renderer's `debug-hud` feature and draws only when `enabled`.
     pub hud: HudParams,
+    /// `render.animation.*` — how a shaping change is animated on screen
+    /// (ADR 0022 §5; issue #9/#10 Phase 3). Render-only: the interpolation is
+    /// pure presentation, adapter-local, and never touches a core height.
+    pub animation: AnimationParams,
 }
 
 /// `render.camera.*` — the workbench view camera (ADR 0020 §3). The camera is
@@ -410,6 +414,20 @@ pub struct HudParams {
     /// `render.hud.show_reticle` — show the reticle section (the grid `(x, y)`
     /// and height of the vertex under the screen centre).
     pub show_reticle: bool,
+}
+
+/// `render.animation.*` — the shaping-change animation (ADR 0022 §5; issue
+/// #9/#10 Phase 3). Render-only: when a command changes the height field, the
+/// renderer eases the *visual* surface from its old shape to the new one over
+/// `duration_ms`, purely in the adapter — no wall-clock, float, or frame-rate
+/// value ever reaches the core (I3). Because it carries a float it derives no
+/// `Eq` (like the rest of [`RenderParams`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnimationParams {
+    /// `render.animation.duration_ms` — how long, in milliseconds, the drawn
+    /// surface takes to settle from its old shape to a shaping command's new
+    /// one. `0` snaps instantly (the Phase-2 behaviour).
+    pub duration_ms: f32,
 }
 
 /// `input.*` — input mapping & sensitivities for the interactive workbench

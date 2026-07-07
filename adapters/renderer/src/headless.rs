@@ -17,7 +17,11 @@ use crate::camera::Camera;
 use crate::context::{self, Gpu};
 use crate::error::RendererError;
 use crate::gpu::{self, TerrainScene};
+#[cfg(feature = "debug-hud")]
+use crate::hud::{Hud, Readout, ScreenDescriptor};
 use crate::mesh::{Mesh, build_mesh};
+#[cfg(feature = "debug-hud")]
+use crate::pick::GridSnapshot;
 
 /// The captured image is 8-bit RGBA; the render target is sRGB so linear shader
 /// colours land encoded correctly for a PNG.
@@ -32,6 +36,10 @@ pub struct HeadlessRenderer {
     params: RenderParams,
     mesh: Option<Mesh>,
     view: Option<Camera>,
+    /// The presented grid, kept so the HUD can pick the reticle vertex for the
+    /// capture (issue #8 Phase 3). Only needed by the overlay.
+    #[cfg(feature = "debug-hud")]
+    grid: Option<GridSnapshot>,
 }
 
 impl HeadlessRenderer {
@@ -43,6 +51,8 @@ impl HeadlessRenderer {
             params,
             mesh: None,
             view: None,
+            #[cfg(feature = "debug-hud")]
+            grid: None,
         }
     }
 
@@ -90,6 +100,15 @@ impl HeadlessRenderer {
         }
         scene.update(&queue, width, height);
 
+        // The read-only HUD overlay for the capture (issue #8 Phase 3): built
+        // against the capture format, drawn over the terrain below.
+        #[cfg(feature = "debug-hud")]
+        let mut hud = self
+            .params
+            .hud
+            .enabled
+            .then(|| Hud::new(&device, CAPTURE_FORMAT, self.params.hud.clone()));
+
         // A texture-to-buffer copy needs each row padded to 256 bytes.
         let unpadded_bytes_per_row = width * BYTES_PER_PIXEL;
         let padded_bytes_per_row = unpadded_bytes_per_row
@@ -105,6 +124,13 @@ impl HeadlessRenderer {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         scene.draw(&mut encoder, &color_view, &depth_view);
+
+        // Record the HUD over the terrain, before the texture is copied back so
+        // the readback (and PNG) includes it (issue #8 Phase 3). Its
+        // texture-upload command buffers are submitted ahead of this encoder.
+        #[cfg(feature = "debug-hud")]
+        let hud_buffers = self.record_hud(hud.as_mut(), &device, &queue, &mut encoder, &color_view);
+
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
                 texture: &target,
@@ -126,6 +152,13 @@ impl HeadlessRenderer {
                 depth_or_array_layers: 1,
             },
         );
+        #[cfg(feature = "debug-hud")]
+        queue.submit(
+            hud_buffers
+                .into_iter()
+                .chain(std::iter::once(encoder.finish())),
+        );
+        #[cfg(not(feature = "debug-hud"))]
         queue.submit(Some(encoder.finish()));
 
         let pixels = read_back(
@@ -137,6 +170,37 @@ impl HeadlessRenderer {
         )?;
         write_png(path, width, height, &pixels)
     }
+
+    /// Record the HUD overlay into `encoder` and return the command buffers to
+    /// submit before it. Builds the reticle/pose readout from the capture's
+    /// camera (the view override, or the configured pose) and presented grid
+    /// (issue #8 Phase 3); a no-op when the overlay is off or nothing was
+    /// presented. Headless captures at 1.0 pixels-per-point (physical pixels).
+    #[cfg(feature = "debug-hud")]
+    fn record_hud(
+        &self,
+        hud: Option<&mut Hud>,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        color_view: &wgpu::TextureView,
+    ) -> Vec<wgpu::CommandBuffer> {
+        let (Some(hud), Some(grid)) = (hud, self.grid.as_ref()) else {
+            return Vec::new();
+        };
+        let camera = self
+            .view
+            .unwrap_or_else(|| Camera::from_params(&self.params.camera));
+        let width = self.params.window.width;
+        let height = self.params.window.height;
+        let aspect = width as f32 / height.max(1) as f32;
+        let readout = Readout::new(&camera, aspect, grid, self.params.mesh.vertical_scale);
+        let screen = ScreenDescriptor {
+            size_in_pixels: [width, height],
+            pixels_per_point: 1.0,
+        };
+        hud.record(device, queue, encoder, color_view, &screen, &readout)
+    }
 }
 
 impl RendererPort for HeadlessRenderer {
@@ -146,6 +210,10 @@ impl RendererPort for HeadlessRenderer {
             self.params.mesh.vertical_scale,
             &self.params.palette,
         ));
+        #[cfg(feature = "debug-hud")]
+        {
+            self.grid = Some(GridSnapshot::from_frame(&frame));
+        }
     }
 }
 

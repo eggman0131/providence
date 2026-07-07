@@ -20,6 +20,18 @@ winit = { workspace = true }
 bytemuck = { workspace = true }
 pollster = { workspace = true }
 png = { workspace = true }
+# The read-only egui debug/HUD overlay (ADR 0015; issue #8 Phase 3), compiled
+# only under `debug-hud`. `egui` draws the panel; `egui-wgpu` paints its
+# triangles into the wgpu surface this adapter already owns (no second stack).
+egui = { workspace = true, optional = true }
+egui-wgpu = { workspace = true, optional = true }
+
+[features]
+# The developer HUD overlay (ADR 0015): off by default, so it is absent from a
+# release build and the gate stays GPU-free. The gate builds+lints it via
+# `--features debug-hud` (ADR 0020 enforcement note); the `/verify` headless
+# capture turns it on to prove the readout draws.
+debug-hud = ["dep:egui", "dep:egui-wgpu"]
 
 [lints]
 workspace = true

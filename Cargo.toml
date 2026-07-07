@@ -44,6 +44,14 @@ winit = "=0.30.13"
 bytemuck = { version = "=1.25.0", features = ["derive"] }
 pollster = "=0.4.0"
 png = "=0.18.1"
+# egui debug/HUD overlay (ADR 0015, ADR 0020; issue #8 Phase 3). Compiled only
+# under the renderer's `debug-hud` feature and confined there by the boundary
+# checker. Pinned exact (I8); egui-wgpu 0.35 targets wgpu ^29 and winit ^0.30 —
+# the same versions the renderer already pins, so a single wgpu stays in-tree.
+# default-features off on egui-wgpu drops the wasm/webgl extras (native-only,
+# ADR 0005); egui keeps `default_fonts` so the readout has a font to draw with.
+egui = { version = "=0.35.0", default-features = false, features = ["default_fonts"] }
+egui-wgpu = { version = "=0.35.0", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

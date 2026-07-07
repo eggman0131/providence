@@ -142,6 +142,30 @@
             "zoom_speed"
           ]
         },
+        "hud": {
+          "description": "`render.hud.*` — the read-only debug/HUD overlay (ADR 0015; issue #8\nPhase 3).",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "`render.hud.enabled` — draw the overlay (only when the `debug-hud`\nfeature is compiled in).",
+              "type": "boolean"
+            },
+            "show_camera": {
+              "description": "`render.hud.show_camera` — show the camera-pose section.",
+              "type": "boolean"
+            },
+            "show_reticle": {
+              "description": "`render.hud.show_reticle` — show the reticle vertex/height section.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "show_camera",
+            "show_reticle"
+          ]
+        },
         "lighting": {
           "description": "`render.lighting.*` — the directional light shading the surface.",
           "type": "object",
@@ -257,7 +281,8 @@
         "palette",
         "background",
         "mesh",
-        "window"
+        "window",
+        "hud"
       ]
     },
     "sim": {

@@ -30,9 +30,14 @@ pub fn check() -> Result<(), String> {
         .map_err(|error| format!("cannot create target/llvm-cov: {error}"))?;
 
     // Runs every workspace test (a test failure fails this command).
+    // `--features debug-hud` compiles and exercises the renderer's feature-gated
+    // `egui` overlay (ADR 0015; issue #8 Phase 3) so its pure logic is measured
+    // and its tests run, matching the clippy pass (ADR 0020 enforcement).
     crate::run::cargo(&[
         "llvm-cov",
         "--workspace",
+        "--features",
+        "debug-hud",
         "--json",
         "--output-path",
         REPORT_PATH,

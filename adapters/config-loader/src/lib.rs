@@ -209,7 +209,8 @@ mod tests {
         [render.background]\n\
         rgb = [0.05, 0.06, 0.09]\n\n\
         [render.mesh]\nvertical_scale = 1.0\n\n\
-        [render.window]\nwidth = 1280\nheight = 720\n";
+        [render.window]\nwidth = 1280\nheight = 720\n\n\
+        [render.hud]\nenabled = true\nshow_camera = true\nshow_reticle = true\n";
 
     /// A complete governed default layer: every subsystem present and on,
     /// mana metered (mirrors the shipped `config/default.toml`).
@@ -351,6 +352,15 @@ mod tests {
         assert!(approx3(render.background.rgb, [0.05, 0.06, 0.09]));
         assert!(approx(render.mesh.vertical_scale, 1.0));
         assert_eq!((render.window.width, render.window.height), (1280, 720));
+        assert_eq!(
+            (
+                render.hud.enabled,
+                render.hud.show_camera,
+                render.hud.show_reticle
+            ),
+            (true, true, true),
+            "the debug/HUD toggles project through (ADR 0015; issue #8 Phase 3)"
+        );
         // Exercise Debug of the projected RenderParams tree.
         assert!(format!("{render:?}").contains("RenderParams"));
     }

@@ -33,11 +33,18 @@ pub mod headless;
 pub mod light;
 pub mod math;
 pub mod mesh;
+pub mod pick;
 pub mod window;
+
+/// The read-only debug/HUD overlay (ADR 0015; issue #8 Phase 3). Compiled only
+/// under the `debug-hud` cargo feature — absent from a default release build.
+#[cfg(feature = "debug-hud")]
+pub mod hud;
 
 pub use camera::{Camera, OrbitController};
 pub use error::RendererError;
 pub use headless::HeadlessRenderer;
+pub use pick::{PickedVertex, Ray};
 pub use window::WindowRenderer;
 
 use providence_ports::{RendererPort, TerrainFrame};

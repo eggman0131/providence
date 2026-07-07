@@ -22,7 +22,11 @@ use crate::camera::OrbitController;
 use crate::context::{self, Gpu};
 use crate::error::RendererError;
 use crate::gpu::{self, TerrainScene};
+#[cfg(feature = "debug-hud")]
+use crate::hud::{Hud, Readout, ScreenDescriptor};
 use crate::mesh::{Mesh, build_mesh};
+#[cfg(feature = "debug-hud")]
+use crate::pick::GridSnapshot;
 
 /// The window title bar text for the workbench.
 const WINDOW_TITLE: &str = "Providence — Terrain Workbench";
@@ -41,6 +45,10 @@ const PIXEL_SCROLL_TO_LINES: f32 = 0.02;
 pub struct WindowRenderer {
     params: RenderParams,
     mesh: Mesh,
+    /// The presented grid, kept so the HUD can pick the reticle vertex each
+    /// frame (issue #8 Phase 3). Only needed by the overlay.
+    #[cfg(feature = "debug-hud")]
+    grid: GridSnapshot,
 }
 
 impl WindowRenderer {
@@ -50,6 +58,8 @@ impl WindowRenderer {
         Self {
             params,
             mesh: Mesh::default(),
+            #[cfg(feature = "debug-hud")]
+            grid: GridSnapshot::default(),
         }
     }
 
@@ -63,6 +73,8 @@ impl WindowRenderer {
             params: self.params,
             mesh: self.mesh,
             state: None,
+            #[cfg(feature = "debug-hud")]
+            grid: self.grid,
         };
         event_loop
             .run_app(&mut app)
@@ -77,6 +89,10 @@ impl RendererPort for WindowRenderer {
             self.params.mesh.vertical_scale,
             &self.params.palette,
         );
+        #[cfg(feature = "debug-hud")]
+        {
+            self.grid = GridSnapshot::from_frame(&frame);
+        }
     }
 }
 
@@ -86,6 +102,10 @@ struct WorkbenchApp {
     params: RenderParams,
     mesh: Mesh,
     state: Option<WindowState>,
+    /// The presented grid, handed to the window state once the window exists so
+    /// the HUD can pick against it (issue #8 Phase 3).
+    #[cfg(feature = "debug-hud")]
+    grid: GridSnapshot,
 }
 
 impl ApplicationHandler for WorkbenchApp {
@@ -108,7 +128,13 @@ impl ApplicationHandler for WorkbenchApp {
             }
         };
         match WindowState::new(window, &self.params, &self.mesh) {
-            Ok(state) => self.state = Some(state),
+            Ok(state) => {
+                #[cfg(feature = "debug-hud")]
+                let mut state = state;
+                #[cfg(feature = "debug-hud")]
+                state.set_grid(self.grid.clone());
+                self.state = Some(state);
+            }
             Err(error) => {
                 eprintln!("workbench: {error}");
                 event_loop.exit();
@@ -161,6 +187,15 @@ struct WindowState {
     depth_view: wgpu::TextureView,
     controller: OrbitController,
     drag: DragState,
+    /// The read-only debug/HUD overlay, when enabled (issue #8 Phase 3).
+    #[cfg(feature = "debug-hud")]
+    hud: Option<Hud>,
+    /// The presented grid the HUD picks the reticle vertex from.
+    #[cfg(feature = "debug-hud")]
+    grid: GridSnapshot,
+    /// The mesh's vertical scale, so HUD picks line up with what is drawn.
+    #[cfg(feature = "debug-hud")]
+    vertical_scale: f32,
 }
 
 impl WindowState {
@@ -197,6 +232,13 @@ impl WindowState {
         scene.update(&queue, width, height);
         let depth_view = gpu::depth_view(&device, width, height);
 
+        // Build the overlay against the surface format when enabled (Phase 3).
+        #[cfg(feature = "debug-hud")]
+        let hud = params
+            .hud
+            .enabled
+            .then(|| Hud::new(&device, config.format, params.hud.clone()));
+
         Ok(Self {
             window,
             surface,
@@ -207,7 +249,20 @@ impl WindowState {
             depth_view,
             controller: OrbitController::from_params(&params.camera),
             drag: DragState::default(),
+            #[cfg(feature = "debug-hud")]
+            hud,
+            #[cfg(feature = "debug-hud")]
+            grid: GridSnapshot::default(),
+            #[cfg(feature = "debug-hud")]
+            vertical_scale: params.mesh.vertical_scale,
         })
+    }
+
+    /// Hand the presented grid to the window state so the HUD can pick the
+    /// reticle vertex each frame (issue #8 Phase 3).
+    #[cfg(feature = "debug-hud")]
+    fn set_grid(&mut self, grid: GridSnapshot) {
+        self.grid = grid;
     }
 
     /// Track a mouse button press/release: left arms orbit, right arms pan.
@@ -289,7 +344,51 @@ impl WindowState {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         self.scene.draw(&mut encoder, &view, &self.depth_view);
+
+        // Draw the read-only HUD over the terrain (issue #8 Phase 3). Its
+        // texture-upload command buffers must be submitted before the encoder
+        // that reads them, so chain them ahead of the terrain pass.
+        #[cfg(feature = "debug-hud")]
+        {
+            let hud_buffers = self.record_hud(&mut encoder, &view);
+            self.queue.submit(
+                hud_buffers
+                    .into_iter()
+                    .chain(std::iter::once(encoder.finish())),
+            );
+        }
+        #[cfg(not(feature = "debug-hud"))]
         self.queue.submit(Some(encoder.finish()));
         surface_texture.present();
+    }
+
+    /// Record the HUD overlay into `encoder` and return the command buffers to
+    /// submit before it. Builds the reticle/pose readout from the live camera
+    /// and presented grid (issue #8 Phase 3); a no-op when the overlay is off or
+    /// no frame has been presented.
+    #[cfg(feature = "debug-hud")]
+    fn record_hud(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+    ) -> Vec<wgpu::CommandBuffer> {
+        let Some(hud) = self.hud.as_mut() else {
+            return Vec::new();
+        };
+        if self.grid.width == 0 || self.grid.height == 0 {
+            return Vec::new();
+        }
+        let aspect = self.config.width as f32 / self.config.height.max(1) as f32;
+        let readout = Readout::new(
+            &self.controller.camera(),
+            aspect,
+            &self.grid,
+            self.vertical_scale,
+        );
+        let screen = ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: self.window.scale_factor() as f32,
+        };
+        hud.record(&self.device, &self.queue, encoder, view, &screen, &readout)
     }
 }

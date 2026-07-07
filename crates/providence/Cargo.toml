@@ -20,5 +20,12 @@ providence-core = { workspace = true }
 providence-ports = { workspace = true }
 providence-renderer = { workspace = true }
 
+[features]
+# Forward the renderer's read-only debug/HUD overlay (ADR 0015; issue #8 Phase 3)
+# so the workbench and headless capture can draw it:
+#   cargo run -p providence --features debug-hud -- workbench   (or capture …)
+# Off by default; absent from a release build.
+debug-hud = ["providence-renderer/debug-hud"]
+
 [lints]
 workspace = true

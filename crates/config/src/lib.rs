@@ -156,6 +156,10 @@ pub struct RenderParams {
     pub mesh: MeshParams,
     /// `render.window.*` — the on-screen surface (and headless-capture size).
     pub window: WindowParams,
+    /// `render.hud.*` — the read-only debug/HUD overlay (ADR 0015; issue #8
+    /// Phase 3). Config is always present; the overlay itself compiles only
+    /// under the renderer's `debug-hud` feature and draws only when `enabled`.
+    pub hud: HudParams,
 }
 
 /// `render.camera.*` — the workbench view camera (ADR 0020 §3). The camera is
@@ -247,4 +251,28 @@ pub struct WindowParams {
     pub width: u32,
     /// `render.window.height` — initial surface height, in physical pixels.
     pub height: u32,
+}
+
+/// `render.hud.*` — the read-only developer HUD overlay (ADR 0015; issue #8
+/// Phase 3): an on-screen readout of the grid dimensions, the live camera pose,
+/// and the vertex under the screen-centre reticle (the "identify a vertex" step
+/// that sets up picking, #9).
+///
+/// Presentation only, and doubly guarded: the overlay code compiles **only**
+/// under the renderer adapter's `debug-hud` cargo feature (absent from a default
+/// release build, ADR 0015), and even when compiled it draws **only** while
+/// `enabled`. The panel toggles let the Director show or hide each section. It
+/// reads a derived snapshot and holds no game state — moving the camera or the
+/// reticle can never change a height (ADR 0020 §3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HudParams {
+    /// `render.hud.enabled` — draw the overlay at all (only meaningful when the
+    /// `debug-hud` feature is compiled in).
+    pub enabled: bool,
+    /// `render.hud.show_camera` — show the camera-pose section (yaw/pitch/
+    /// distance and eye position).
+    pub show_camera: bool,
+    /// `render.hud.show_reticle` — show the reticle section (the grid `(x, y)`
+    /// and height of the vertex under the screen centre).
+    pub show_reticle: bool,
 }

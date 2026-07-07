@@ -15,7 +15,7 @@
 
 use providence_config::CameraParams;
 
-use crate::math::{Mat4, Vec3, cross, look_at_rh, mul, normalize, perspective_rh, sub};
+use crate::math::{Mat4, Vec3, cross, dot, look_at_rh, mul, normalize, perspective_rh, sub};
 
 /// A resolved camera: where it sits, what it looks at, and its lens. Produced by
 /// [`OrbitController::camera`] (or, for the fixed initial pose,
@@ -53,6 +53,23 @@ impl Camera {
         let view = look_at_rh(self.eye, self.target, self.up);
         let proj = perspective_rh(self.fov_y_radians, aspect, self.near, self.far);
         mul(proj, view)
+    }
+
+    /// Recover the orbit pose — yaw and pitch in **degrees** plus the orbit
+    /// distance — from this resolved eye/target. The inverse of the
+    /// eye-from-pose maths [`OrbitController`] applies, so the HUD readout can
+    /// show the pose behind *any* camera the same way, windowed or headless
+    /// (issue #8 Phase 3). A degenerate (eye == target) camera reports zeros.
+    #[must_use]
+    pub fn orbit_pose(&self) -> (f32, f32, f32) {
+        let offset = sub(self.eye, self.target);
+        let distance = dot(offset, offset).sqrt();
+        if distance <= f32::EPSILON {
+            return (0.0, 0.0, 0.0);
+        }
+        let pitch = (offset[1] / distance).asin();
+        let yaw = offset[0].atan2(offset[2]);
+        (yaw.to_degrees(), pitch.to_degrees(), distance)
     }
 }
 
@@ -410,6 +427,18 @@ mod tests {
         assert!(approx(camera.fov_y_radians, 45.0_f32.to_radians()));
         assert!(approx(camera.near, 0.1));
         assert!(approx(camera.far, 1000.0));
+    }
+
+    #[test]
+    fn orbit_pose_inverts_the_eye_maths() {
+        // The pose recovered from a resolved camera matches the yaw/pitch/
+        // distance it was built from — what the HUD readout reports (Phase 3).
+        let (yaw, pitch, distance) = OrbitController::from_params(&params())
+            .camera()
+            .orbit_pose();
+        assert!(approx(yaw, 45.0), "yaw recovered");
+        assert!(approx(pitch, 30.0), "pitch recovered");
+        assert!(approx(distance, 24.0), "distance recovered");
     }
 
     /// The current orbit radius (eye→target distance).

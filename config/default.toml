@@ -102,3 +102,13 @@ vertical_scale = 1.0
 # resolution of the headless render-to-PNG capture used by /verify (ADR 0020 §2).
 width = 1280
 height = 720
+
+[render.hud]
+# The read-only debug/HUD overlay (ADR 0015; issue #8 Phase 3): an on-screen
+# readout of the grid size, the live camera pose, and the vertex under the
+# screen-centre reticle. Doubly guarded — the overlay compiles only under the
+# renderer's `debug-hud` cargo feature (off in a release build), and even then
+# draws only while `enabled`. It reads a derived snapshot and mutates nothing.
+enabled = true       # draw the overlay when the debug-hud feature is built in
+show_camera = true   # show the camera-pose section (yaw/pitch/distance, eye)
+show_reticle = true  # show the reticle vertex (x, y) + height section

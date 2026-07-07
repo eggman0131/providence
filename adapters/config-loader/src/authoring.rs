@@ -8,7 +8,7 @@
 
 use garde::Validate;
 use providence_config::{
-    BackgroundParams, CameraParams, EconomyParams, LightingParams, ManaMode, ManaParams,
+    BackgroundParams, CameraParams, EconomyParams, HudParams, LightingParams, ManaMode, ManaParams,
     MeshParams, OpponentParams, PaletteParams, Params, PlaceholderParams, RaiseParams,
     RenderParams, SimParams, TerrainParams, WinLossParams, WindowParams,
 };
@@ -183,6 +183,10 @@ pub struct RenderSection {
     /// `render.window.*` — the on-screen surface (and headless-capture size).
     #[garde(dive)]
     pub window: WindowSection,
+    /// `render.hud.*` — the read-only debug/HUD overlay (ADR 0015; issue #8
+    /// Phase 3).
+    #[garde(dive)]
+    pub hud: HudSection,
 }
 
 /// `render.camera.*` — the workbench view camera (ADR 0020 §3). Its initial
@@ -299,6 +303,24 @@ pub struct WindowSection {
     pub height: u32,
 }
 
+/// `render.hud.*` — the read-only debug/HUD overlay (ADR 0015; issue #8
+/// Phase 3). Every field is a plain boolean toggle; the overlay is presentation
+/// only and never touches the core.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct HudSection {
+    /// `render.hud.enabled` — draw the overlay (only when the `debug-hud`
+    /// feature is compiled in).
+    #[garde(skip)]
+    pub enabled: bool,
+    /// `render.hud.show_camera` — show the camera-pose section.
+    #[garde(skip)]
+    pub show_camera: bool,
+    /// `render.hud.show_reticle` — show the reticle vertex/height section.
+    #[garde(skip)]
+    pub show_reticle: bool,
+}
+
 impl ConfigRoot {
     /// Map the validated authoring config into the immutable `no_std`
     /// params the core consumes. Purely mechanical; covered by tests.
@@ -372,6 +394,11 @@ impl ConfigRoot {
             window: WindowParams {
                 width: self.render.window.width,
                 height: self.render.window.height,
+            },
+            hud: HudParams {
+                enabled: self.render.hud.enabled,
+                show_camera: self.render.hud.show_camera,
+                show_reticle: self.render.hud.show_reticle,
             },
         }
     }

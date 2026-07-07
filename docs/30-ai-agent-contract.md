@@ -157,6 +157,8 @@ When in doubt, treat it as the heavier class. **Exploration is never a default**
 
 Each phase leaves the gate green. A red gate halts all forward work until fixed.
 
+> **Foundation-first supersedes this *sequence* for the current build ([ADR 0019](./decisions/0019-foundation-first-terrain-workbench.md)).** The ladder above remains the dependency-ordering *principle* and the fallback. For this build the gameplay sequence is depth-first on the load-bearing element instead: the **terrain core** ([ADR 0017](./decisions/0017-vertex-heightfield-terrain.md)) is built to real depth **alongside a prioritised 3D terrain workbench** (renderer + input, normally phases 4/6) so the land can be *seen and felt* in motion and judged right; everything above terrain — economy/faith, followers, powers, the rival, win/loss — is **parked** until then. Only the *order* changes: §7.1–7.3 are unchanged (enforcement first — Phase 1, done), and I2/I3/I4 hold — the renderer still depends inward on core/ports and the terrain sim stays deterministic (fixed timestep, discrete vertex commands).
+
 ---
 
 ## 8. Amendment process

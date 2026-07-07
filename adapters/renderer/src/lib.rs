@@ -7,10 +7,13 @@
 //! imports the core, so it can only ever read a derived snapshot, never
 //! simulation state (ADR 0020 §1).
 //!
-//! **Pre-work state (issue #8):** pure, GPU-free logic ([`mesh`], [`color`])
-//! plus the [`NoopRenderer`] test double. The on-screen `wgpu`/`winit`
-//! renderer and the headless render-to-PNG capture (ADR 0020 §2) land in
-//! Phase 1, confined to this crate by the boundary checker.
+//! Three adapters realise [`RendererPort`] (ADR 0020 §2): the on-screen
+//! [`WindowRenderer`] (windowed `wgpu`/`winit`), the [`HeadlessRenderer`]
+//! (render-to-PNG capture — the agents-only visual self-check), and the
+//! GPU-free [`NoopRenderer`] test double. They all draw the same pure geometry
+//! ([`mesh`]), camera ([`camera`]), light ([`light`]), and palette ([`color`]),
+//! which are unit-tested in the gate; the `wgpu`/`winit` glue is confined here
+//! and exercised only through the capture path (I9).
 
 #![forbid(unsafe_code)]
 // This adapter does floating-point presentation math: small-magnitude integer
@@ -19,8 +22,20 @@
 // pedantic precision-loss lint carries no signal for this crate.
 #![allow(clippy::cast_precision_loss)]
 
+pub mod camera;
 pub mod color;
+pub mod context;
+pub mod error;
+pub mod gpu;
+pub mod headless;
+pub mod light;
+pub mod math;
 pub mod mesh;
+pub mod window;
+
+pub use error::RendererError;
+pub use headless::HeadlessRenderer;
+pub use window::WindowRenderer;
 
 use providence_ports::{RendererPort, TerrainFrame};
 

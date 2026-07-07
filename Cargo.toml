@@ -36,6 +36,14 @@ schemars = "1.2.1"
 garde = { version = "0.23.0", default-features = false, features = ["derive"] }
 syn = { version = "2.0.118", features = ["full", "visit", "parsing"] }
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
+# GPU/windowing stack for the workbench renderer adapter (ADR 0007, ADR 0020).
+# Confined to `providence-renderer` by the boundary checker; never reaches the
+# core. Pinned exact (I8); bumps arrive via Dependabot PRs gated by CI.
+wgpu = "=29.0.4"
+winit = "=0.30.13"
+bytemuck = { version = "=1.25.0", features = ["derive"] }
+pollster = "=0.4.0"
+png = "=0.18.1"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

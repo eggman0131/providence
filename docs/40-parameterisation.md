@@ -70,7 +70,7 @@ What lives where (illustrative, not exhaustive; every gameplay number ends up un
 - **`ai.llm.*`** — runtime + model selection (`runtime = "ollama"`, `model = "gemma4:26b-mlx"` — [ADR 0014](./decisions/0014-ollama-local-llm-runtime.md)), decision `cadence_ticks`, timeouts, temperature/seed, prompt-template ids.
 - **`ai.difficulty.*`** — `strategy_trust` (how much of the LLM's strategy the engine acts on), resource handicaps, decision frequency.
 - **`ai.strategy.*`** — the strategy vocabulary/library the LLM may choose from.
-- **`render.*`** — presentation for the workbench renderer, projected into a standalone `RenderParams` outside the determinism boundary ([ADR 0020](./decisions/0020-workbench-runtime-and-rendererport.md)): `camera`, `lighting`, `palette`, `background` (issue #8), and `hud` ([ADR 0015](./decisions/0015-debug-hud-ui-layer.md)). **`input.* / runtime.*`** — controls, adapter settings.
+- **`render.*`** — presentation for the workbench renderer, projected into a standalone `RenderParams` outside the determinism boundary ([ADR 0020](./decisions/0020-workbench-runtime-and-rendererport.md)): `camera`, `lighting`, `palette`, `background`, `mesh` (`vertical_scale`), `window` (`width`/`height`, also the headless-capture size) — issue #8 — and `hud` ([ADR 0015](./decisions/0015-debug-hud-ui-layer.md)). **`input.* / runtime.*`** — controls, adapter settings.
 
 **Content tables.** Catalogue-style content (powers, terrain types, scenarios) is expressed as **keyed collections** under its `content.*` root — each entry a record with named fields — rather than as a sprawl of individual scalar keys. The record fields still follow the naming convention.
 

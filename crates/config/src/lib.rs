@@ -152,6 +152,10 @@ pub struct RenderParams {
     pub palette: PaletteParams,
     /// `render.background.*` — the surface the world is drawn against.
     pub background: BackgroundParams,
+    /// `render.mesh.*` — how the height field becomes a drawable surface.
+    pub mesh: MeshParams,
+    /// `render.window.*` — the on-screen surface (and headless-capture size).
+    pub window: WindowParams,
 }
 
 /// `render.camera.*` — the workbench view camera (ADR 0020 §3). The camera is
@@ -202,4 +206,25 @@ pub struct PaletteParams {
 pub struct BackgroundParams {
     /// `render.background.rgb` — clear colour, linear RGB.
     pub rgb: [f32; 3],
+}
+
+/// `render.mesh.*` — how the integer height field is turned into the drawable
+/// flat-shaded stepped surface (ADR 0020; issue #8 Phase 1). Purely
+/// presentation: it scales the *look* of the relief and never touches a height.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeshParams {
+    /// `render.mesh.vertical_scale` — world-space height of one integer height
+    /// step. Larger values exaggerate the relief; the core heights are
+    /// unchanged (the renderer only reads a snapshot, ADR 0020 §1).
+    pub vertical_scale: f32,
+}
+
+/// `render.window.*` — the on-screen surface the workbench opens (ADR 0020 §2),
+/// and the resolution of the headless render-to-PNG capture used by `/verify`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowParams {
+    /// `render.window.width` — initial surface width, in physical pixels.
+    pub width: u32,
+    /// `render.window.height` — initial surface height, in physical pixels.
+    pub height: u32,
 }

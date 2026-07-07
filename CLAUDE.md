@@ -33,6 +33,9 @@ cargo xtask explore      # fast lane (fmt + clippy) for explore/* probes — NOT
 cargo xtask schema       # check the committed config schema for drift
 cargo xtask schema --write   # regenerate docs/contracts/config.schema.json from the Rust types
 
+cargo workbench          # open the 3D terrain workbench window (issue #8, ADR 0020; needs a display)
+cargo capture [PATH]     # render the workbench headlessly to a PNG (default target/workbench.png) — the /verify self-check
+
 # Fast inner loop (not a substitute for the gate):
 cargo test --workspace                       # all tests, no coverage instrumentation
 cargo test -p providence-core --test replay  # the determinism / replay suite (I3)
@@ -53,7 +56,7 @@ Ports-and-adapters realised as a **Cargo workspace crate graph** ([`Cargo.toml`]
 | `providence-config` | [`crates/config`](crates/config) | Config value types (`Params` for the core; standalone `RenderParams` for presentation, ADR 0020). Types-first: the JSON schema is generated *from* these types, not hand-written. |
 | `providence-ports` | [`crates/ports`](crates/ports) | Port **interfaces** for every side effect (LLM, render, input, persistence, clock, RNG, …) plus the DTOs they hand across (e.g. `RendererPort` + the `TerrainFrame` snapshot, ADR 0020). Core depends on these, never on a concrete adapter. |
 | `providence-config-loader` | [`adapters/config-loader`](adapters/config-loader) | Adapter that loads/merges layered TOML into `Params` (`params_from_layers`, `load_dir`) and projects `render.*` into `RenderParams` (`load_render`), deep-merge. |
-| `providence-renderer` | [`adapters/renderer`](adapters/renderer) | **Workbench renderer adapter** ([ADR 0020](docs/decisions/0020-workbench-runtime-and-rendererport.md)): realises `RendererPort`, drawing a derived `TerrainFrame`; the camera is adapter-local view state. `wgpu`/`winit` land in issue #8 Phase 1, confined here. |
+| `providence-renderer` | [`adapters/renderer`](adapters/renderer) | **Workbench renderer adapter** ([ADR 0020](docs/decisions/0020-workbench-runtime-and-rendererport.md)): realises `RendererPort`, drawing a derived `TerrainFrame` as a lit 3D surface (on-screen, headless-PNG, and no-op adapters); the camera is adapter-local view state. `wgpu`/`winit` are confined here (issue #8 Phase 1). |
 | `providence-app` | [`crates/app`](crates/app) | Application wiring. |
 | `providence` | [`crates/providence`](crates/providence) | Top-level binary; holds the end-to-end tests in [`tests/e2e.rs`](crates/providence/tests/e2e.rs). |
 | `xtask` | [`xtask`](xtask) | The gate and its checks (not shipped in the game). |

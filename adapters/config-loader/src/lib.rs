@@ -204,7 +204,9 @@ mod tests {
         [render.palette]\n\
         low_rgb = [0.24, 0.36, 0.16]\nhigh_rgb = [0.86, 0.86, 0.82]\n\n\
         [render.background]\n\
-        rgb = [0.05, 0.06, 0.09]\n";
+        rgb = [0.05, 0.06, 0.09]\n\n\
+        [render.mesh]\nvertical_scale = 1.0\n\n\
+        [render.window]\nwidth = 1280\nheight = 720\n";
 
     /// A complete governed default layer: every subsystem present and on,
     /// mana metered (mirrors the shipped `config/default.toml`).
@@ -344,6 +346,8 @@ mod tests {
         assert!(approx(render.lighting.ambient, 0.25));
         assert!(approx3(render.palette.low_rgb, [0.24, 0.36, 0.16]));
         assert!(approx3(render.background.rgb, [0.05, 0.06, 0.09]));
+        assert!(approx(render.mesh.vertical_scale, 1.0));
+        assert_eq!((render.window.width, render.window.height), (1280, 720));
         // Exercise Debug of the projected RenderParams tree.
         assert!(format!("{render:?}").contains("RenderParams"));
     }

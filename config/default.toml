@@ -80,3 +80,15 @@ high_rgb = [0.86, 0.86, 0.82]
 [render.background]
 # Clear colour the world is drawn against, linear RGB.
 rgb = [0.05, 0.06, 0.09]
+
+[render.mesh]
+# World-space height of one integer height step. Scales the LOOK of the relief
+# only; the core's integer heights are untouched (the renderer reads a snapshot,
+# ADR 0020 §1). 0 flattens the surface; negatives are rejected.
+vertical_scale = 1.0
+
+[render.window]
+# The on-screen surface the workbench opens, in physical pixels. Also the
+# resolution of the headless render-to-PNG capture used by /verify (ADR 0020 §2).
+width = 1280
+height = 720

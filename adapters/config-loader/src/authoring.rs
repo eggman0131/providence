@@ -9,8 +9,8 @@
 use garde::Validate;
 use providence_config::{
     BackgroundParams, CameraParams, EconomyParams, LightingParams, ManaMode, ManaParams,
-    OpponentParams, PaletteParams, Params, PlaceholderParams, RaiseParams, RenderParams, SimParams,
-    TerrainParams, WinLossParams,
+    MeshParams, OpponentParams, PaletteParams, Params, PlaceholderParams, RaiseParams,
+    RenderParams, SimParams, TerrainParams, WinLossParams, WindowParams,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -177,6 +177,12 @@ pub struct RenderSection {
     /// `render.background.*` — the surface the world is drawn against.
     #[garde(dive)]
     pub background: BackgroundSection,
+    /// `render.mesh.*` — how the height field becomes a drawable surface.
+    #[garde(dive)]
+    pub mesh: MeshSection,
+    /// `render.window.*` — the on-screen surface (and headless-capture size).
+    #[garde(dive)]
+    pub window: WindowSection,
 }
 
 /// `render.camera.*` — the workbench view camera (ADR 0020 §3).
@@ -242,6 +248,29 @@ pub struct BackgroundSection {
     pub rgb: [f32; 3],
 }
 
+/// `render.mesh.*` — height-field → drawable surface (ADR 0020; issue #8).
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct MeshSection {
+    /// `render.mesh.vertical_scale` — world height of one integer step. A
+    /// non-negative presentation scale; 0 flattens the relief (degenerate but
+    /// valid), and negatives (which would invert it) are rejected.
+    #[garde(range(min = 0.0))]
+    pub vertical_scale: f32,
+}
+
+/// `render.window.*` — the on-screen surface, and the headless-capture size.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct WindowSection {
+    /// `render.window.width` — initial surface width, in physical pixels.
+    #[garde(range(min = 1))]
+    pub width: u32,
+    /// `render.window.height` — initial surface height, in physical pixels.
+    #[garde(range(min = 1))]
+    pub height: u32,
+}
+
 impl ConfigRoot {
     /// Map the validated authoring config into the immutable `no_std`
     /// params the core consumes. Purely mechanical; covered by tests.
@@ -301,6 +330,13 @@ impl ConfigRoot {
             },
             background: BackgroundParams {
                 rgb: self.render.background.rgb,
+            },
+            mesh: MeshParams {
+                vertical_scale: self.render.mesh.vertical_scale,
+            },
+            window: WindowParams {
+                width: self.render.window.width,
+                height: self.render.window.height,
             },
         }
     }

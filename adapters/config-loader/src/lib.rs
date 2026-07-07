@@ -262,6 +262,32 @@ mod tests {
         [content.terrain.tree]\ndensity_permille = 120\n\n\
         [content.terrain.rock]\ndensity_permille = 200\n";
 
+    /// The `[input.*]` block shared by the fixtures — mirrors the shipped
+    /// `config/default.toml` so the default layer stays complete now that
+    /// `input` is a required section (ADR 0022).
+    const INPUT_TOML: &str = "\
+        [input.shape]\n\
+        raise_button = \"left\"\nlower_button = \"right\"\nclick_drag_threshold_px = 6.0\n";
+
+    /// The `[sim.*]` + `[content.*]` blocks shared by the fixtures — every
+    /// subsystem present and on, mana metered (mirrors the shipped
+    /// `config/default.toml`). Kept as one const so both the default layer and
+    /// the version-mismatch fixture stay complete as the schema grows.
+    const SIM_CONTENT_TOML: &str = "\
+        [sim.worldgen]\n\
+        width = 64\nheight = 64\nseed = 1337\nsea_level = 0\nland_percent = 55\n\
+        shape = \"island\"\nrelief = 12\nfeature_size = 16\ndetail = 3\n\n\
+        [sim.opponent]\nenabled = true\n\n\
+        [sim.economy.mana]\nmode = \"normal\"\n\n\
+        [sim.winloss]\nenabled = true\n\n\
+        [sim.terrain]\nmax_step = 1\nmax_height = 64\n\n\
+        [sim.terrain.raise]\nmana_cost = 1\n\n\
+        [sim.placeholder]\ntick_increment = 1\n\n\
+        [content.terrain.shore]\nband = 2\n\n\
+        [content.terrain.mountain]\nmin_height = 12\n\n\
+        [content.terrain.tree]\ndensity_permille = 120\n\n\
+        [content.terrain.rock]\ndensity_permille = 200\n";
+
     /// A complete governed default layer: every subsystem present and on,
     /// mana metered (mirrors the shipped `config/default.toml`).
     fn default_layer() -> Layer {

@@ -649,6 +649,21 @@ impl ConfigRoot {
             },
         }
     }
+
+    /// Project the validated `input.*` config into the standalone
+    /// [`InputParams`] the renderer adapter consumes (ADR 0022). Separate from
+    /// [`into_params`](Self::into_params) so input bindings never travel with
+    /// the core's [`Params`]. Purely mechanical; covered by tests.
+    #[must_use]
+    pub fn into_input_params(self) -> InputParams {
+        InputParams {
+            shape: ShapeInputParams {
+                raise_button: self.input.shape.raise_button.into_param(),
+                lower_button: self.input.shape.lower_button.into_param(),
+                click_drag_threshold_px: self.input.shape.click_drag_threshold_px,
+            },
+        }
+    }
 }
 
 impl ManaModeAuthored {

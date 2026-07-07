@@ -234,7 +234,7 @@ mod tests {
         [render.mesh]\nvertical_scale = 1.0\n\n\
         [render.window]\nwidth = 1280\nheight = 720\n\n\
         [render.hud]\nenabled = true\nshow_camera = true\nshow_reticle = true\n\n\
-        [render.animation]\nduration_ms = 250.0\n";
+        [render.animation]\nduration_ms = 250.0\nripple_ms_per_unit = 18.0\n";
 
     /// The `[input.*]` block shared by the fixtures — mirrors the shipped
     /// `config/default.toml` so the default layer stays complete now that
@@ -445,6 +445,10 @@ mod tests {
         assert!(
             approx(render.animation.duration_ms, 250.0),
             "the shaping-animation duration projects through (ADR 0022 §5; Phase 3)"
+        );
+        assert!(
+            approx(render.animation.ripple_ms_per_unit, 18.0),
+            "the ripple stagger projects through (ADR 0022 §5; Phase 4)"
         );
         // Exercise Debug of the projected RenderParams tree.
         assert!(format!("{render:?}").contains("RenderParams"));

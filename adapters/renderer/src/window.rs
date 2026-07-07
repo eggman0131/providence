@@ -19,7 +19,7 @@ use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-use crate::anim::{MeshTween, progress};
+use crate::anim::{MeshTween, ripple_delays};
 use crate::camera::OrbitController;
 use crate::context::{self, Gpu};
 use crate::error::RendererError;
@@ -27,7 +27,7 @@ use crate::gpu::{self, TerrainScene};
 #[cfg(feature = "debug-hud")]
 use crate::hud::{Hud, Readout, ScreenDescriptor};
 use crate::input::{is_shaping_click, shape_action};
-use crate::mesh::{Mesh, build_mesh};
+use crate::mesh::{Mesh, build_mesh, vertex_position};
 use crate::pick::{GridSnapshot, cursor_ndc, pick_vertex, screen_ray};
 
 /// The window title bar text for the workbench.
@@ -252,6 +252,9 @@ struct WindowState {
     /// `render.animation.duration_ms` — how long a shaping change settles; 0
     /// snaps instantly.
     animation_duration_ms: f32,
+    /// `render.animation.ripple_ms_per_unit` — per-unit-distance start delay that
+    /// makes the cascade ripple outward from the click (issue #9/#10 Phase 4).
+    animation_ripple_ms_per_unit: f32,
     /// The shaping controls (`input.shape.*`): bindings + click-vs-drag slack.
     input: InputParams,
     /// The palette, so a shaping command can rebuild the mesh from the fresh
@@ -329,6 +332,7 @@ impl WindowState {
             drawn: mesh.clone(),
             animation: None,
             animation_duration_ms: params.animation.duration_ms,
+            animation_ripple_ms_per_unit: params.animation.ripple_ms_per_unit,
             input: input.clone(),
             palette: params.palette.clone(),
             grid: GridSnapshot::default(),
@@ -417,28 +421,39 @@ impl WindowState {
 
         // Pull the fresh snapshot and rebuild the target surface. Picking tracks
         // the new *logical* heights immediately (the grid), while the *drawn*
-        // surface eases toward the target over `render.animation.duration_ms`.
+        // surface eases toward the target over `render.animation.*`, rippling out
+        // from the shaped vertex.
         let (width, height) = (driver.width(), driver.height());
         let heights = driver.heights().to_vec();
         let frame = TerrainFrame::new(width, height, &heights);
         let target = build_mesh(&frame, self.vertical_scale, &self.palette);
         self.grid = GridSnapshot::from_frame(&frame);
-        self.start_animation(target);
+        // The shaped vertex's world (x, z) is the ripple centre (the ripple lags
+        // by distance from it). Reuse the mesh's own vertex placement so the
+        // centre lines up with the drawn geometry.
+        let origin = vertex_position(picked.x, picked.y, 0, width, height, self.vertical_scale);
+        self.start_animation(target, [origin[0], origin[2]]);
     }
 
-    /// Begin easing the drawn surface toward `target` (ADR 0022 §5; issue
-    /// #9/#10 Phase 3), or snap to it when animation is disabled
-    /// (`render.animation.duration_ms == 0`). Either way a redraw is requested;
-    /// an in-flight animation then drives its own redraws until it settles.
-    fn start_animation(&mut self, target: Mesh) {
+    /// Begin easing the drawn surface toward `target`, rippling outward from
+    /// `center_xz` (ADR 0022 §5; issue #9/#10 Phase 3-4), or snap to it when
+    /// animation is disabled (`render.animation.duration_ms == 0`). Either way a
+    /// redraw is requested; an in-flight animation then drives its own redraws
+    /// until it settles.
+    fn start_animation(&mut self, target: Mesh, center_xz: [f32; 2]) {
         if self.animation_duration_ms <= 0.0 {
             self.scene.set_mesh(&self.device, &target);
             self.drawn = target;
             self.animation = None;
         } else {
             let from = self.drawn.clone();
+            let delays = ripple_delays(
+                &target.vertices,
+                center_xz,
+                self.animation_ripple_ms_per_unit,
+            );
             self.animation = Some(Animation {
-                tween: MeshTween::new(from, target),
+                tween: MeshTween::new(from, target, delays),
                 start: Instant::now(),
             });
         }
@@ -447,21 +462,21 @@ impl WindowState {
 
     /// Advance any in-flight shaping animation to the current wall-clock time,
     /// re-uploading the eased surface (ADR 0022 §5). Returns `true` while the
-    /// animation is still settling, so the caller keeps requesting redraws; on
-    /// the final frame it snaps exactly onto the target and clears the state.
-    /// The wall-clock is read here and nowhere near the core (I3).
+    /// animation is still settling (elapsed under the ripple's total span), so
+    /// the caller keeps requesting redraws; on the final frame it snaps exactly
+    /// onto the target and clears the state. The wall-clock is read here and
+    /// nowhere near the core (I3).
     fn advance_animation(&mut self) -> bool {
         let (mesh, done) = {
             let Some(anim) = self.animation.as_ref() else {
                 return false;
             };
             let elapsed_ms = anim.start.elapsed().as_secs_f32() * 1000.0;
-            let fraction = progress(elapsed_ms, self.animation_duration_ms);
-            let done = fraction >= 1.0;
+            let done = elapsed_ms >= anim.tween.total_ms(self.animation_duration_ms);
             let mesh = if done {
                 anim.tween.target().clone()
             } else {
-                anim.tween.at(fraction)
+                anim.tween.at(elapsed_ms, self.animation_duration_ms)
             };
             (mesh, done)
         };

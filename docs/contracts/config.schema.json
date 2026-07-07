@@ -185,7 +185,13 @@
           "type": "object",
           "properties": {
             "duration_ms": {
-              "description": "`render.animation.duration_ms` — settle time (ms) for a shaping change.\nNon-negative; 0 snaps instantly.",
+              "description": "`render.animation.duration_ms` — per-vertex settle time (ms) for a shaping\nchange. Non-negative; 0 snaps instantly.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            },
+            "ripple_ms_per_unit": {
+              "description": "`render.animation.ripple_ms_per_unit` — per-unit-distance start delay that\nmakes the cascade ripple outward (issue #9/#10 Phase 4). Non-negative; 0\nsettles the whole change together.",
               "type": "number",
               "format": "float",
               "minimum": 0.0
@@ -193,7 +199,8 @@
           },
           "additionalProperties": false,
           "required": [
-            "duration_ms"
+            "duration_ms",
+            "ripple_ms_per_unit"
           ]
         },
         "background": {

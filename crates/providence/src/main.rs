@@ -15,12 +15,12 @@
 //!   The optional orbit (yaw/pitch degrees, distance) drives the Phase-2 camera
 //!   for the multi-angle self-check; omitted, it uses the configured pose. No
 //!   display required.
-//! - `capture-shape [BEFORE MID AFTER]` — the display-free proof of the
-//!   interactive shaping seam and its animation (ADR 0022): submit a scripted
+//! - `capture-shape [DIR]` — the display-free proof of the interactive shaping
+//!   seam and its rippling animation (ADR 0022): submit a scripted
 //!   `TerrainCommand` through the same `SimDriver` submit + snapshot-pull path
-//!   the event loop uses, then capture the old→new surface tween at t=0/0.5/1 —
-//!   so both the land changing *and* the render-only interpolation (§5) are
-//!   observed without a display. No display required.
+//!   the event loop uses, then capture a **filmstrip** (`DIR/shape-frame-NN.png`)
+//!   across the old→new surface tween — the multi-frame instrument for judging
+//!   the motion (issue #11) without a display. No display required.
 //!
 //! The composition root is the only crate permitted to name concrete adapters
 //! (docs/20-architecture.md §5.2): it projects `render.*` into `RenderParams`,
@@ -39,6 +39,7 @@ use providence_core::terrain::{
 use providence_ports::{RendererPort, SimDriver, TerrainCommand, TerrainFrame};
 use providence_renderer::{
     HeadlessRenderer, Mesh, MeshTween, NoopRenderer, OrbitController, WindowRenderer, build_mesh,
+    ripple_delays, vertex_position,
 };
 
 /// Fixed demo values for the smoke run — not behavioural config (the smoke
@@ -69,7 +70,7 @@ fn main() -> ExitCode {
         Some(other) => {
             eprintln!(
                 "providence: unknown subcommand `{other}` (try: \
-                 workbench | capture [PATH [YAW PITCH DISTANCE]] | capture-shape [BEFORE MID AFTER])"
+                 workbench | capture [PATH [YAW PITCH DISTANCE]] | capture-shape [DIR])"
             );
             ExitCode::FAILURE
         }
@@ -357,41 +358,36 @@ fn run_capture(args: &[String]) -> ExitCode {
     }
 }
 
-/// Default before/mid/after PNG paths for a `capture-shape` with no explicit
-/// paths.
-const DEFAULT_SHAPE_BEFORE: &str = "target/workbench-before.png";
-const DEFAULT_SHAPE_MID: &str = "target/workbench-mid.png";
-const DEFAULT_SHAPE_AFTER: &str = "target/workbench-after.png";
-/// How many raises the headless shaping proof applies — enough to grow a clearly
-/// visible stepped cone out of the sea (dev tooling, not gameplay).
-const SHAPE_PROOF_RAISES: u32 = 3;
-/// The mid-animation fraction the proof captures — the interpolated still that
-/// shows the surface part-way through settling (ADR 0022 §5; Phase 3).
-const SHAPE_PROOF_MID_FRACTION: f32 = 0.5;
+/// Default directory for the `capture-shape` filmstrip when none is given.
+const DEFAULT_SHAPE_DIR: &str = "target";
+/// How many raises the headless shaping proof applies — enough to grow a stepped
+/// cone whose ripple reads clearly across the filmstrip (dev tooling, not
+/// gameplay).
+const SHAPE_PROOF_RAISES: u32 = 6;
+/// How many evenly-spaced stills the filmstrip captures across the animation —
+/// the multi-frame instrument for judging the motion by eye (issue #11).
+const SHAPE_PROOF_FRAMES: u32 = 6;
 
 /// The display-free proof of the interactive pick→command→redraw path and its
-/// animation (ADR 0022; the Definition-of-Done observation, contract §3). Builds
-/// a [`WorkbenchSession`], submits a scripted sculpt through the **same**
-/// [`SimDriver`] submit + snapshot-pull path the window event loop uses, then
-/// builds the same old→new surface [`MeshTween`] the window animates and captures
-/// **three stills** — before (t=0), mid-settle (t=0.5), after (t=1) — so both the
-/// land *changing* and the render-only *interpolation* (ADR 0022 §5) are observed
-/// without a display. The cursor→vertex pick half of the path is unit-tested in
-/// the renderer gate (`pick`/`input`); the tween maths in `anim`.
+/// rippling animation (ADR 0022; the Definition-of-Done observation, contract
+/// §3). Builds a [`WorkbenchSession`], submits a scripted sculpt through the
+/// **same** [`SimDriver`] submit + snapshot-pull path the window event loop uses,
+/// then builds the same rippling old→new [`MeshTween`] the window animates and
+/// captures a **filmstrip** of evenly-spaced stills across it — the multi-frame
+/// instrument for judging the motion (issue #11) without a display: early frames
+/// show the shaped vertex risen while its skirt still lags (the outward ripple,
+/// Phase 4). The cursor→vertex pick is unit-tested in the gate (`pick`/`input`);
+/// the tween and ripple maths in `anim`.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "frame indices are tiny integers; the u32→f32 cast is exact here"
+)]
 fn run_capture_shape(args: &[String]) -> ExitCode {
-    let (before_path, mid_path, after_path) = match args {
-        [] => (
-            PathBuf::from(DEFAULT_SHAPE_BEFORE),
-            PathBuf::from(DEFAULT_SHAPE_MID),
-            PathBuf::from(DEFAULT_SHAPE_AFTER),
-        ),
-        [before, mid, after] => (
-            PathBuf::from(before),
-            PathBuf::from(mid),
-            PathBuf::from(after),
-        ),
+    let dir = match args {
+        [] => PathBuf::from(DEFAULT_SHAPE_DIR),
+        [dir] => PathBuf::from(dir),
         _ => {
-            eprintln!("providence: usage: capture-shape [BEFORE_PNG MID_PNG AFTER_PNG]");
+            eprintln!("providence: usage: capture-shape [DIR]");
             return ExitCode::FAILURE;
         }
     };
@@ -440,9 +436,9 @@ fn run_capture_shape(args: &[String]) -> ExitCode {
     );
     let after_heights = session.heights().to_vec();
 
-    // Build the same old→new surface tween the window animates (ADR 0022 §5) and
-    // capture three eased stills. Unchanged vertices sit still through the tween,
-    // so only the sculpted cone moves; the mid still shows it part-way risen.
+    // Build the same rippling old→new tween the window animates (ADR 0022 §5).
+    // The ripple lags outer vertices by distance from the shaped vertex, so a
+    // filmstrip across `total_ms` shows the cascade settling from the inside out.
     let from = build_mesh(
         &TerrainFrame::new(width, height, &before_heights),
         render.mesh.vertical_scale,
@@ -453,29 +449,39 @@ fn run_capture_shape(args: &[String]) -> ExitCode {
         render.mesh.vertical_scale,
         &render.palette,
     );
-    let tween = MeshTween::new(from, to);
-    let stills = [
-        (0.0_f32, &before_path),
-        (SHAPE_PROOF_MID_FRACTION, &mid_path),
-        (1.0_f32, &after_path),
-    ];
-    for (fraction, path) in stills {
-        if let Err(code) = capture_mesh(tween.at(fraction), &render, path) {
+    let origin = vertex_position(sx, sy, 0, width, height, render.mesh.vertical_scale);
+    let delays = ripple_delays(
+        &to.vertices,
+        [origin[0], origin[2]],
+        render.animation.ripple_ms_per_unit,
+    );
+    let tween = MeshTween::new(from, to, delays);
+    let total_ms = tween.total_ms(render.animation.duration_ms);
+
+    let last_frame = SHAPE_PROOF_FRAMES.saturating_sub(1).max(1);
+    for k in 0..SHAPE_PROOF_FRAMES {
+        let elapsed = total_ms * k as f32 / last_frame as f32;
+        let path = dir.join(format!("shape-frame-{k:02}.png"));
+        if let Err(code) = capture_mesh(
+            tween.at(elapsed, render.animation.duration_ms),
+            &render,
+            &path,
+        ) {
             return code;
         }
     }
 
     println!(
         "  sculpted vertex ({sx}, {sy}); {n} raises → revision {before_revision}→{after_revision}, \
-         {logged} commands logged; stills before {before} (t=0), mid {mid} (t={frac}), after {after} (t=1) \
-         — the drawn surface eases old→new (a session is seed + params + log, replayable bit-for-bit)",
+         {logged} commands logged; {frames}-frame filmstrip (t=0..{total_ms:.0}ms) → \
+         {dir}/shape-frame-00..{last:02}.png — the cascade ripples outward as it settles \
+         (render-only; a session is seed + params + log, replayable bit-for-bit)",
         n = SHAPE_PROOF_RAISES,
         after_revision = session.revision(),
         logged = session.log().len(),
-        frac = SHAPE_PROOF_MID_FRACTION,
-        before = before_path.display(),
-        mid = mid_path.display(),
-        after = after_path.display(),
+        frames = SHAPE_PROOF_FRAMES,
+        last = last_frame,
+        dir = dir.display(),
     );
     ExitCode::SUCCESS
 }

@@ -43,12 +43,12 @@ pub mod window;
 #[cfg(feature = "debug-hud")]
 pub mod hud;
 
-pub use anim::MeshTween;
+pub use anim::{MeshTween, ripple_delays};
 pub use camera::{Camera, OrbitController};
 pub use error::RendererError;
 pub use headless::HeadlessRenderer;
 pub use input::{ShapeAction, is_shaping_click, shape_action};
-pub use mesh::{Mesh, build_mesh};
+pub use mesh::{Mesh, build_mesh, vertex_position};
 pub use pick::{PickedVertex, Ray, cursor_ndc};
 pub use window::WindowRenderer;
 

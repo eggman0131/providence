@@ -473,10 +473,15 @@ pub struct HudSection {
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct AnimationSection {
-    /// `render.animation.duration_ms` — settle time (ms) for a shaping change.
-    /// Non-negative; 0 snaps instantly.
+    /// `render.animation.duration_ms` — per-vertex settle time (ms) for a shaping
+    /// change. Non-negative; 0 snaps instantly.
     #[garde(range(min = 0.0))]
     pub duration_ms: f32,
+    /// `render.animation.ripple_ms_per_unit` — per-unit-distance start delay that
+    /// makes the cascade ripple outward (issue #9/#10 Phase 4). Non-negative; 0
+    /// settles the whole change together.
+    #[garde(range(min = 0.0))]
+    pub ripple_ms_per_unit: f32,
 }
 
 /// `input.*` (docs/40-parameterisation.md §2.2) — input mapping for the
@@ -631,6 +636,7 @@ impl ConfigRoot {
             },
             animation: AnimationParams {
                 duration_ms: self.render.animation.duration_ms,
+                ripple_ms_per_unit: self.render.animation.ripple_ms_per_unit,
             },
         }
     }

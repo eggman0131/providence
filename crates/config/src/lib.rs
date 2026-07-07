@@ -424,10 +424,18 @@ pub struct HudParams {
 /// `Eq` (like the rest of [`RenderParams`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnimationParams {
-    /// `render.animation.duration_ms` — how long, in milliseconds, the drawn
-    /// surface takes to settle from its old shape to a shaping command's new
+    /// `render.animation.duration_ms` — how long, in milliseconds, each vertex
+    /// takes to settle from its old visual height to a shaping command's new
     /// one. `0` snaps instantly (the Phase-2 behaviour).
     pub duration_ms: f32,
+    /// `render.animation.ripple_ms_per_unit` — how much later, per unit of
+    /// distance from the shaped vertex, an outer vertex starts its settle
+    /// (issue #9/#10 Phase 4). This staggers the cascade so it *ripples outward*
+    /// from the click rather than all vertices settling at once — the Populous
+    /// feel (ADR 0022 §5). With unit grid spacing this is milliseconds per
+    /// vertex ring. `0` makes the whole change settle together (Phase-3
+    /// behaviour).
+    pub ripple_ms_per_unit: f32,
 }
 
 /// `input.*` — input mapping & sensitivities for the interactive workbench

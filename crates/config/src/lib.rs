@@ -132,3 +132,147 @@ pub struct PlaceholderParams {
     /// advances per step.
     pub tick_increment: u64,
 }
+
+/// `render.*` — presentation parameters for the workbench renderer (ADR 0020
+/// §4).
+///
+/// Deliberately **not** a field of [`Params`]: presentation is
+/// non-deterministic and must never cross into the core
+/// (docs/40-parameterisation.md §2.2). The `config-loader` projects `render.*`
+/// into this standalone type and hands it to the renderer adapter, never to
+/// the core. Because its values are floats it derives no `Eq` (unlike the core
+/// [`Params`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderParams {
+    /// `render.camera.*` — the view camera.
+    pub camera: CameraParams,
+    /// `render.lighting.*` — the directional light shading the surface.
+    pub lighting: LightingParams,
+    /// `render.palette.*` — how vertex height maps to colour.
+    pub palette: PaletteParams,
+    /// `render.background.*` — the surface the world is drawn against.
+    pub background: BackgroundParams,
+    /// `render.mesh.*` — how the height field becomes a drawable surface.
+    pub mesh: MeshParams,
+    /// `render.window.*` — the on-screen surface (and headless-capture size).
+    pub window: WindowParams,
+    /// `render.hud.*` — the read-only debug/HUD overlay (ADR 0015; issue #8
+    /// Phase 3). Config is always present; the overlay itself compiles only
+    /// under the renderer's `debug-hud` feature and draws only when `enabled`.
+    pub hud: HudParams,
+}
+
+/// `render.camera.*` — the workbench view camera (ADR 0020 §3). The camera is
+/// adapter-local view state: these are its **initial** pose, its projection
+/// lens, and the bounds/sensitivities of the orbit/pan/zoom controller
+/// (issue #8 Phase 2). The live pose itself never leaves the renderer adapter.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CameraParams {
+    /// `render.camera.fov_degrees` — vertical field of view, in degrees.
+    pub fov_degrees: f32,
+    /// `render.camera.near` — near clip-plane distance.
+    pub near: f32,
+    /// `render.camera.far` — far clip-plane distance.
+    pub far: f32,
+    /// `render.camera.initial_distance` — starting orbit distance from target.
+    pub initial_distance: f32,
+    /// `render.camera.initial_yaw_degrees` — starting orbit yaw, in degrees.
+    pub initial_yaw_degrees: f32,
+    /// `render.camera.initial_pitch_degrees` — starting orbit pitch, in degrees.
+    pub initial_pitch_degrees: f32,
+    /// `render.camera.min_distance` — closest the zoom may dolly to the target.
+    pub min_distance: f32,
+    /// `render.camera.max_distance` — farthest the zoom may pull back.
+    pub max_distance: f32,
+    /// `render.camera.min_pitch_degrees` — lowest tilt (kept above the horizon
+    /// so the view never dives under the land).
+    pub min_pitch_degrees: f32,
+    /// `render.camera.max_pitch_degrees` — highest tilt (kept below the pole so
+    /// the look-at framing never degenerates).
+    pub max_pitch_degrees: f32,
+    /// `render.camera.orbit_speed` — orbit rotation per pixel of drag, in
+    /// degrees.
+    pub orbit_speed: f32,
+    /// `render.camera.pan_speed` — look-at translation per pixel of drag, in
+    /// world units.
+    pub pan_speed: f32,
+    /// `render.camera.zoom_speed` — fraction of the current distance changed per
+    /// unit of scroll.
+    pub zoom_speed: f32,
+}
+
+/// `render.lighting.*` — a single directional light plus ambient fill, enough
+/// to read the flat-shaded stepped faces (ADR 0020; issue #8 Phase 1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LightingParams {
+    /// `render.lighting.azimuth_degrees` — light compass direction, in degrees.
+    pub azimuth_degrees: f32,
+    /// `render.lighting.elevation_degrees` — light angle above the horizon.
+    pub elevation_degrees: f32,
+    /// `render.lighting.ambient` — ambient light fraction in `[0, 1]`.
+    pub ambient: f32,
+    /// `render.lighting.diffuse` — diffuse light fraction in `[0, 1]`.
+    pub diffuse: f32,
+}
+
+/// `render.palette.*` — vertex height → colour, lerped from `low_rgb` at the
+/// lowest drawn height to `high_rgb` at the highest.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaletteParams {
+    /// `render.palette.low_rgb` — colour at the lowest drawn height, linear RGB.
+    pub low_rgb: [f32; 3],
+    /// `render.palette.high_rgb` — colour at the highest drawn height, linear RGB.
+    pub high_rgb: [f32; 3],
+}
+
+/// `render.background.*` — the clear colour the world is drawn against.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackgroundParams {
+    /// `render.background.rgb` — clear colour, linear RGB.
+    pub rgb: [f32; 3],
+}
+
+/// `render.mesh.*` — how the integer height field is turned into the drawable
+/// flat-shaded stepped surface (ADR 0020; issue #8 Phase 1). Purely
+/// presentation: it scales the *look* of the relief and never touches a height.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeshParams {
+    /// `render.mesh.vertical_scale` — world-space height of one integer height
+    /// step. Larger values exaggerate the relief; the core heights are
+    /// unchanged (the renderer only reads a snapshot, ADR 0020 §1).
+    pub vertical_scale: f32,
+}
+
+/// `render.window.*` — the on-screen surface the workbench opens (ADR 0020 §2),
+/// and the resolution of the headless render-to-PNG capture used by `/verify`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowParams {
+    /// `render.window.width` — initial surface width, in physical pixels.
+    pub width: u32,
+    /// `render.window.height` — initial surface height, in physical pixels.
+    pub height: u32,
+}
+
+/// `render.hud.*` — the read-only developer HUD overlay (ADR 0015; issue #8
+/// Phase 3): an on-screen readout of the grid dimensions, the live camera pose,
+/// and the vertex under the screen-centre reticle (the "identify a vertex" step
+/// that sets up picking, #9).
+///
+/// Presentation only, and doubly guarded: the overlay code compiles **only**
+/// under the renderer adapter's `debug-hud` cargo feature (absent from a default
+/// release build, ADR 0015), and even when compiled it draws **only** while
+/// `enabled`. The panel toggles let the Director show or hide each section. It
+/// reads a derived snapshot and holds no game state — moving the camera or the
+/// reticle can never change a height (ADR 0020 §3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HudParams {
+    /// `render.hud.enabled` — draw the overlay at all (only meaningful when the
+    /// `debug-hud` feature is compiled in).
+    pub enabled: bool,
+    /// `render.hud.show_camera` — show the camera-pose section (yaw/pitch/
+    /// distance and eye position).
+    pub show_camera: bool,
+    /// `render.hud.show_reticle` — show the reticle section (the grid `(x, y)`
+    /// and height of the vertex under the screen centre).
+    pub show_reticle: bool,
+}

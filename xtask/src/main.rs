@@ -141,11 +141,17 @@ fn check_format() -> Result<(), String> {
 }
 
 /// Type check + lints: clippy over everything, all warnings denied (§6.2).
+///
+/// `--features debug-hud` brings the renderer's feature-gated `egui` overlay
+/// (ADR 0015; issue #8 Phase 3) under the linter — it is off in the default
+/// build, so without this the overlay would go unchecked (ADR 0020 enforcement).
 fn check_clippy() -> Result<(), String> {
     run::cargo(&[
         "clippy",
         "--workspace",
         "--all-targets",
+        "--features",
+        "debug-hud",
         "--",
         "-D",
         "warnings",

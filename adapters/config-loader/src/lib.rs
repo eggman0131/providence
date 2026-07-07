@@ -22,7 +22,7 @@ use std::fs;
 use std::path::Path;
 
 use garde::Validate;
-use providence_config::Params;
+use providence_config::{Params, RenderParams};
 
 pub use crate::authoring::ConfigRoot;
 pub use crate::error::ConfigError;
@@ -64,6 +64,17 @@ pub fn schema_json() -> String {
 pub fn params_from_layers(layers: &[Layer]) -> Result<Params, ConfigError> {
     let root = config_root_from_layers(layers)?;
     Ok(root.into_params())
+}
+
+/// Load, merge, and fully validate the layers, returning the standalone
+/// presentation params (ADR 0020 §4).
+///
+/// Separate from [`params_from_layers`] so `render.*` never travels with the
+/// core's [`Params`]: the same validated config yields two disjoint
+/// projections, and only this one reaches the renderer adapter.
+pub fn render_params_from_layers(layers: &[Layer]) -> Result<RenderParams, ConfigError> {
+    let root = config_root_from_layers(layers)?;
+    Ok(root.into_render_params())
 }
 
 /// Load, merge, and fully validate the layers, returning the authoring root
@@ -120,6 +131,22 @@ pub fn load_dir(dir: &Path) -> Result<Params, ConfigError> {
 /// named-but-missing profile file is an error — a mistyped profile must not
 /// silently fall back to the governed defaults.
 pub fn load_with_profile(dir: &Path, profile: Option<&str>) -> Result<Params, ConfigError> {
+    params_from_layers(&read_layers(dir, profile)?)
+}
+
+/// Load the presentation params (`render.*`) from a config directory — the
+/// renderer adapter's load path, mirroring [`load_dir`] (ADR 0020 §4). Uses
+/// the same governed layer order; presentation config is profile-independent
+/// for now, so no profile is interposed.
+pub fn load_render(dir: &Path) -> Result<RenderParams, ConfigError> {
+    render_params_from_layers(&read_layers(dir, None)?)
+}
+
+/// Read the ordered config layers from `dir`: `default.toml` (required) →
+/// `<profile>.toml` (when named) → `local.toml` (optional). The shared file
+/// step behind [`load_with_profile`] and [`load_render`]; a named-but-missing
+/// profile is a loud error, never a silent fall-back to the defaults.
+fn read_layers(dir: &Path, profile: Option<&str>) -> Result<Vec<Layer>, ConfigError> {
     let mut layers = Vec::new();
 
     let default_path = dir.join("default.toml");
@@ -156,14 +183,34 @@ pub fn load_with_profile(dir: &Path, profile: Option<&str>) -> Result<Params, Co
         });
     }
 
-    params_from_layers(&layers)
+    Ok(layers)
 }
 
 #[cfg(test)]
 mod tests {
     use providence_config::ManaMode;
 
-    use super::{Layer, SUPPORTED_SCHEMA_VERSION, params_from_layers};
+    use super::{Layer, SUPPORTED_SCHEMA_VERSION, params_from_layers, render_params_from_layers};
+
+    /// The `[render.*]` block shared by the fixtures — mirrors the shipped
+    /// `config/default.toml` so the default layer stays complete now that
+    /// `render` is a required section (ADR 0020 §4).
+    const RENDER_TOML: &str = "\
+        [render.camera]\n\
+        fov_degrees = 45.0\nnear = 0.1\nfar = 1000.0\n\
+        initial_distance = 24.0\ninitial_yaw_degrees = 45.0\ninitial_pitch_degrees = 30.0\n\
+        min_distance = 6.0\nmax_distance = 120.0\n\
+        min_pitch_degrees = 5.0\nmax_pitch_degrees = 85.0\n\
+        orbit_speed = 0.4\npan_speed = 0.05\nzoom_speed = 0.1\n\n\
+        [render.lighting]\n\
+        azimuth_degrees = 135.0\nelevation_degrees = 45.0\nambient = 0.25\ndiffuse = 0.85\n\n\
+        [render.palette]\n\
+        low_rgb = [0.24, 0.36, 0.16]\nhigh_rgb = [0.86, 0.86, 0.82]\n\n\
+        [render.background]\n\
+        rgb = [0.05, 0.06, 0.09]\n\n\
+        [render.mesh]\nvertical_scale = 1.0\n\n\
+        [render.window]\nwidth = 1280\nheight = 720\n\n\
+        [render.hud]\nenabled = true\nshow_camera = true\nshow_reticle = true\n";
 
     /// A complete governed default layer: every subsystem present and on,
     /// mana metered (mirrors the shipped `config/default.toml`).
@@ -177,9 +224,21 @@ mod tests {
                  [sim.winloss]\nenabled = true\n\n\
                  [sim.terrain]\nmax_step = 1\nmax_height = 64\n\n\
                  [sim.terrain.raise]\nmana_cost = 1\n\n\
-                 [sim.placeholder]\ntick_increment = 1\n"
+                 [sim.placeholder]\ntick_increment = 1\n\n\
+                 {RENDER_TOML}"
             ),
         }
+    }
+
+    /// Floats compared within a small tolerance: clippy forbids `==` on floats,
+    /// and the TOML→`f32` round-trip makes exact equality brittle.
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() <= 1e-5
+    }
+
+    /// Element-wise [`approx`] for an RGB triple.
+    fn approx3(a: [f32; 3], b: [f32; 3]) -> bool {
+        a.iter().zip(b.iter()).all(|(x, y)| (x - y).abs() <= 1e-5)
     }
 
     #[test]
@@ -283,17 +342,65 @@ mod tests {
     }
 
     #[test]
+    fn default_layer_projects_render_params() {
+        let render = render_params_from_layers(&[default_layer()])
+            .expect("the default layer must yield render params");
+        assert!(approx(render.camera.fov_degrees, 45.0));
+        assert!(approx(render.camera.initial_distance, 24.0));
+        assert!(approx(render.lighting.ambient, 0.25));
+        assert!(approx3(render.palette.low_rgb, [0.24, 0.36, 0.16]));
+        assert!(approx3(render.background.rgb, [0.05, 0.06, 0.09]));
+        assert!(approx(render.mesh.vertical_scale, 1.0));
+        assert_eq!((render.window.width, render.window.height), (1280, 720));
+        assert_eq!(
+            (
+                render.hud.enabled,
+                render.hud.show_camera,
+                render.hud.show_reticle
+            ),
+            (true, true, true),
+            "the debug/HUD toggles project through (ADR 0015; issue #8 Phase 3)"
+        );
+        // Exercise Debug of the projected RenderParams tree.
+        assert!(format!("{render:?}").contains("RenderParams"));
+    }
+
+    #[test]
+    fn render_params_are_disjoint_from_the_core_params() {
+        // The two projections of one validated config are independent: the
+        // render load path carries no sim state and vice versa (ADR 0020 §4).
+        let params = params_from_layers(&[default_layer()]).expect("params must load");
+        let render = render_params_from_layers(&[default_layer()]).expect("render must load");
+        assert_eq!(params.sim.terrain.max_height, 64);
+        assert!(approx(render.camera.far, 1000.0));
+    }
+
+    #[test]
+    fn out_of_range_render_value_is_rejected() {
+        // Presentation config is validated on the same whole-root pass as sim
+        // config: an impossible field of view fails before any params are built.
+        let overlay = Layer {
+            name: "local.toml".into(),
+            text: "[render.camera]\nfov_degrees = 200.0\n".into(),
+        };
+        render_params_from_layers(&[default_layer(), overlay])
+            .expect_err("a field of view above 179° must fail garde validation");
+    }
+
+    #[test]
     fn schema_version_mismatch_is_a_migration_error() {
         let bad = Layer {
             name: "default.toml".into(),
-            text: "[meta]\nschema_version = 999\n\n\
+            text: format!(
+                "[meta]\nschema_version = 999\n\n\
                  [sim.opponent]\nenabled = true\n\n\
                  [sim.economy.mana]\nmode = \"normal\"\n\n\
                  [sim.winloss]\nenabled = true\n\n\
                  [sim.terrain]\nmax_step = 1\nmax_height = 64\n\n\
                  [sim.terrain.raise]\nmana_cost = 1\n\n\
-                 [sim.placeholder]\ntick_increment = 1\n"
-                .into(),
+                 [sim.placeholder]\ntick_increment = 1\n\n\
+                 {RENDER_TOML}"
+            ),
         };
         let err = params_from_layers(&[bad]).expect_err("version mismatch must be an error");
         assert!(

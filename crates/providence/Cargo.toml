@@ -14,6 +14,18 @@ providence-config-loader = { workspace = true }
 # The composition root drives the terrain core directly for the pre-workbench
 # smoke render (issue #6 §5); core is inward of the root, so the edge is legal.
 providence-core = { workspace = true }
+# The workbench renderer adapter and the port + snapshot it consumes (ADR 0020):
+# the root builds a TerrainFrame from the core field and presents it. Pre-work
+# wires the no-op renderer; the on-screen adapter arrives in issue #8 Phase 1.
+providence-ports = { workspace = true }
+providence-renderer = { workspace = true }
+
+[features]
+# Forward the renderer's read-only debug/HUD overlay (ADR 0015; issue #8 Phase 3)
+# so the workbench and headless capture can draw it:
+#   cargo run -p providence --features debug-hud -- workbench   (or capture …)
+# Off by default; absent from a release build.
+debug-hud = ["providence-renderer/debug-hud"]
 
 [lints]
 workspace = true

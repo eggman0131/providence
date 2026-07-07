@@ -1,0 +1,37 @@
+[package]
+name = "providence-renderer"
+description = "Workbench renderer adapter: presents terrain via RendererPort with a wgpu/winit 3D view (issue #8, ADR 0020)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# Adapters depend on port interfaces + config data types; never on other
+# adapters and never on the core (docs/20-architecture.md §5 rule 3, ADR 0020).
+# The GPU libraries (wgpu/winit/…) are confined to this one crate by the
+# boundary checker; they never reach the deterministic core (I2/I3).
+[dependencies]
+providence-ports = { workspace = true }
+providence-config = { workspace = true }
+# Real-time 3D presentation (ADR 0007, ADR 0020 §2), pinned in the workspace:
+# wgpu draws the surface, winit owns the window loop, bytemuck packs GPU
+# buffers, pollster blocks on wgpu's async setup, png encodes headless captures.
+wgpu = { workspace = true }
+winit = { workspace = true }
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+png = { workspace = true }
+# The read-only egui debug/HUD overlay (ADR 0015; issue #8 Phase 3), compiled
+# only under `debug-hud`. `egui` draws the panel; `egui-wgpu` paints its
+# triangles into the wgpu surface this adapter already owns (no second stack).
+egui = { workspace = true, optional = true }
+egui-wgpu = { workspace = true, optional = true }
+
+[features]
+# The developer HUD overlay (ADR 0015): off by default, so it is absent from a
+# release build and the gate stays GPU-free. The gate builds+lints it via
+# `--features debug-hud` (ADR 0020 enforcement note); the `/verify` headless
+# capture turns it on to prove the readout draws.
+debug-hud = ["dep:egui", "dep:egui-wgpu"]
+
+[lints]
+workspace = true

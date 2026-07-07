@@ -80,7 +80,7 @@ Interfaces the application/core depend on, each with real adapter(s) **and** a t
 | Port | Purpose | Notable adapters |
 |---|---|---|
 | `LLMOpponentPort` | Get the rival deity's strategy from an observation. | local-LLM adapter (`llm-ollama`: Ollama over loopback, [ADR 0014](./decisions/0014-ollama-local-llm-runtime.md)); scripted/mock adapter (tests). See [`50-llm-opponent.md`](./50-llm-opponent.md). |
-| `RendererPort` | Present a frame of game state. | on-screen renderer (`wgpu`/Metal, [ADR 0007](./decisions/0007-wgpu-rendering-framework.md)); headless no-op **and** headless render-to-PNG (tests/agent visual self-check). |
+| `RendererPort` | Present a derived **`TerrainFrame`** snapshot (grid dims + row-major heights; no simulation or camera/view state — [ADR 0020](./decisions/0020-workbench-runtime-and-rendererport.md)). The camera is adapter-local view state and never crosses the boundary. | on-screen renderer (`wgpu`/Metal, [ADR 0007](./decisions/0007-wgpu-rendering-framework.md)); headless render-to-PNG (agent visual self-check); no-op test double. |
 | `InputPort` | Receive human player intent. | device/UI adapter; scripted input (tests). |
 | `PersistencePort` | Save/load sessions & snapshots. | local-storage adapter; in-memory (tests). |
 | `ClockRandomPort` | Time and randomness *at the edge*; supplies **seeded** RNG streams to the core. | real clock + seeded RNG; fixed-seed/fixed-time (tests). |
@@ -120,6 +120,8 @@ Everything **inside** the core + config is deterministic. Everything **outside**
 ```
 
 Steps 6–9 are fully deterministic and independently testable with test doubles for every port (invariant I5).
+
+**Real-time workbench refinement ([ADR 0020](./decisions/0020-workbench-runtime-and-rendererport.md)).** The push in step 10 is the *headless/batch* shape. In the interactive workbench the renderer adapter owns the `winit` event loop — the window drives redraws — so `RendererPort` is called *by* the loop with the current `TerrainFrame`, not from an app-owned `for` loop. The camera moves entirely inside the adapter and never crosses the determinism boundary, so this real-time view does not weaken I3. The fixed-timestep loop that reconciles a live sim with a variable frame rate lands with issue #10.
 
 ---
 

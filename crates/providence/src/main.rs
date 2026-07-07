@@ -1,18 +1,30 @@
 //! Composition root (docs/20-architecture.md §2.3): wires adapters to ports
 //! at startup and launches the application.
 //!
-//! Phase-1 scope: a smoke binary proving the config → params → session
-//! pipeline end-to-end (contract §3 "Verified"). It also renders a small
-//! terrain shaping demo (issue #6 §5) — the pre-workbench, textual surrogate
-//! for "seen and felt": a stepped plateau you can eyeball until the 3D
-//! workbench (#8/#9) lets the land be seen in motion. Renderer/input/
-//! persistence wiring lands in Phase 4+.
+//! Subcommands (dev tooling — the real game loop lands in later phases):
+//! - *(none)* — a smoke run proving the config → params → session pipeline,
+//!   plus a textual terrain demo (issue #6 §5).
+//! - `workbench` — open the on-screen 3D terrain workbench (issue #8, ADR 0020):
+//!   a lit height field the Director can orbit / pan / zoom. Needs a display.
+//! - `capture [PATH [YAW PITCH DISTANCE]]` — render the same scene headlessly to
+//!   a PNG (ADR 0020 §2), the agents-only visual self-check used by `/verify`.
+//!   The optional orbit (yaw/pitch degrees, distance) drives the Phase-2 camera
+//!   for the multi-angle self-check; omitted, it uses the configured pose. No
+//!   display required.
+//!
+//! The composition root is the only crate permitted to name concrete adapters
+//! (docs/20-architecture.md §5.2): it projects `render.*` into `RenderParams`,
+//! builds a [`TerrainFrame`] snapshot from a core height field, and hands it to
+//! a [`RendererPort`]. The renderer only ever sees the derived snapshot, never
+//! the core (ADR 0020 §1).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use providence_config::TerrainParams;
+use providence_config::{Params, RenderParams, TerrainParams};
 use providence_core::terrain::{HeightField, raise};
+use providence_ports::{RendererPort, TerrainFrame};
+use providence_renderer::{HeadlessRenderer, NoopRenderer, OrbitController, WindowRenderer};
 
 /// Fixed demo values for the smoke run — not behavioural config (the smoke
 /// run is dev tooling, not gameplay; real sessions take seed and length
@@ -29,16 +41,84 @@ const DEMO_RAISES: u32 = 3;
 /// demo stay within its length; taller vertices reuse the last glyph.
 const HEIGHT_GLYPHS: &[u8] = b".:-=+*#%@";
 
+/// Workbench scene (dev tooling): a larger field with a few overlapping hills so
+/// the flat-shaded steps, height colouring, and lighting are all visible when
+/// the land is seen in 3D.
+const WORKBENCH_SIZE: u32 = 32;
+/// Hills as `(x, y, raises)` — a tall central peak plus two smaller offset
+/// rises, giving asymmetric relief to judge (issue #8; ADR 0019 "seen and felt").
+const WORKBENCH_HILLS: &[(u32, u32, u32)] = &[(16, 16, 9), (8, 22, 5), (24, 9, 6)];
+/// Default output path for a `capture` with no explicit path argument.
+const DEFAULT_CAPTURE_PATH: &str = "target/workbench.png";
+
 fn main() -> ExitCode {
-    let params = match providence_config_loader::load_dir(Path::new("config")) {
-        Ok(params) => params,
-        Err(error) => {
-            eprintln!("providence: config error: {error}");
-            return ExitCode::FAILURE;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        None => smoke_run(),
+        Some("workbench") => run_workbench(),
+        Some("capture") => run_capture(&args[1..]),
+        Some(other) => {
+            eprintln!(
+                "providence: unknown subcommand `{other}` \
+                 (try: workbench | capture [PATH [YAW PITCH DISTANCE]])"
+            );
+            ExitCode::FAILURE
         }
+    }
+}
+
+/// A parsed `capture` invocation: where to write the PNG and, optionally, an
+/// explicit orbit pose (yaw/pitch degrees, distance) for the Phase-2
+/// multi-angle self-check.
+struct CaptureArgs {
+    path: PathBuf,
+    pose: Option<(f32, f32, f32)>,
+}
+
+/// Parse the `capture` arguments: `[PATH [YAW PITCH DISTANCE]]`. A lone path
+/// keeps the configured pose; all four give an explicit orbit. Any other arity
+/// (e.g. two args) is a usage error rather than a silent misread.
+fn parse_capture_args(args: &[String]) -> Result<CaptureArgs, String> {
+    let parse = |raw: &str, name: &str| {
+        raw.parse::<f32>()
+            .map_err(|_| format!("`{name}` must be a number, got `{raw}`"))
+    };
+    match args {
+        [] => Ok(CaptureArgs {
+            path: PathBuf::from(DEFAULT_CAPTURE_PATH),
+            pose: None,
+        }),
+        [path] => Ok(CaptureArgs {
+            path: PathBuf::from(path),
+            pose: None,
+        }),
+        [path, yaw, pitch, distance] => Ok(CaptureArgs {
+            path: PathBuf::from(path),
+            pose: Some((
+                parse(yaw, "YAW")?,
+                parse(pitch, "PITCH")?,
+                parse(distance, "DISTANCE")?,
+            )),
+        }),
+        _ => Err("usage: capture [PATH [YAW PITCH DISTANCE]]".into()),
+    }
+}
+
+/// The default smoke run: load config, print the textual terrain demo, prove
+/// the `RendererPort` seam with the no-op renderer, then advance a session.
+fn smoke_run() -> ExitCode {
+    let params = match load_params() {
+        Ok(params) => params,
+        Err(code) => return code,
     };
 
-    print_terrain_demo(&params.sim.terrain);
+    let field = print_terrain_demo(&params.sim.terrain);
+
+    let render = match load_render() {
+        Ok(render) => render,
+        Err(code) => return code,
+    };
+    present_demo_frame(&field, &render);
 
     let mut session = providence_app::Session::new(params, SMOKE_SEED);
     for _ in 0..SMOKE_STEPS {
@@ -53,10 +133,130 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Open the on-screen 3D workbench (issue #8 Phase 1). Builds the workbench
+/// field, presents it through the windowed [`WindowRenderer`], and runs the
+/// event loop until the window closes.
+fn run_workbench() -> ExitCode {
+    let (params, render) = match (load_params(), load_render()) {
+        (Ok(params), Ok(render)) => (params, render),
+        (Err(code), _) | (_, Err(code)) => return code,
+    };
+
+    let field = build_workbench_field(&params.sim.terrain);
+    let heights = frame_heights(&field);
+    let frame = TerrainFrame::new(field.width(), field.height(), &heights);
+
+    println!("providence: opening the terrain workbench — close the window to exit.");
+    let mut renderer = WindowRenderer::new(render);
+    renderer.present(frame);
+    match renderer.run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("providence: workbench error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Render the workbench scene headlessly to a PNG (ADR 0020 §2) — the
+/// display-free visual self-check for `/verify`. An optional explicit orbit
+/// pose drives the Phase-2 camera so several angles can be captured and compared
+/// without a display.
+fn run_capture(args: &[String]) -> ExitCode {
+    let capture = match parse_capture_args(args) {
+        Ok(capture) => capture,
+        Err(message) => {
+            eprintln!("providence: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let (params, render) = match (load_params(), load_render()) {
+        (Ok(params), Ok(render)) => (params, render),
+        (Err(code), _) | (_, Err(code)) => return code,
+    };
+
+    let field = build_workbench_field(&params.sim.terrain);
+    let heights = frame_heights(&field);
+    let frame = TerrainFrame::new(field.width(), field.height(), &heights);
+
+    let mut renderer = HeadlessRenderer::new(render.clone());
+    // Adapter-local camera override for the multi-angle self-check (ADR 0020
+    // §3): resolve the requested orbit through the same controller the window
+    // uses, so a captured angle matches what the Director would see live.
+    if let Some((yaw, pitch, distance)) = capture.pose {
+        let mut controller = OrbitController::from_params(&render.camera);
+        controller.set_pose(yaw, pitch, distance);
+        renderer.set_view(controller.camera());
+    }
+    renderer.present(frame);
+    match renderer.capture(&capture.path) {
+        Ok(()) => {
+            let pose = capture.pose.map_or_else(
+                || " (configured pose)".to_string(),
+                |(yaw, pitch, distance)| {
+                    format!(" (yaw {yaw}°, pitch {pitch}°, distance {distance})")
+                },
+            );
+            println!(
+                "providence: captured a {}×{} terrain workbench frame to {}{pose}",
+                field.width(),
+                field.height(),
+                capture.path.display(),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("providence: capture error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Load and validate the core params from `config/`, mapping a failure to a
+/// printed error and a failure exit code.
+fn load_params() -> Result<Params, ExitCode> {
+    providence_config_loader::load_dir(Path::new("config")).map_err(|error| {
+        eprintln!("providence: config error: {error}");
+        ExitCode::FAILURE
+    })
+}
+
+/// Load and validate the presentation params (`render.*`) from `config/`.
+fn load_render() -> Result<RenderParams, ExitCode> {
+    providence_config_loader::load_render(Path::new("config")).map_err(|error| {
+        eprintln!("providence: render config error: {error}");
+        ExitCode::FAILURE
+    })
+}
+
+/// Build the richer workbench field: raise each configured hill in turn on a
+/// flat field, letting the core's cascade shape the stepped relief.
+fn build_workbench_field(terrain: &TerrainParams) -> HeightField {
+    let mut field = HeightField::flat(WORKBENCH_SIZE, WORKBENCH_SIZE, 0);
+    for &(x, y, raises) in WORKBENCH_HILLS {
+        for _ in 0..raises {
+            raise(&mut field, x, y, terrain);
+        }
+    }
+    field
+}
+
+/// Flatten a height field into the row-major buffer a [`TerrainFrame`] borrows.
+fn frame_heights(field: &HeightField) -> Vec<i32> {
+    let mut heights = Vec::with_capacity(field.width() as usize * field.height() as usize);
+    for y in 0..field.height() {
+        for x in 0..field.width() {
+            heights.push(field.get(x, y).unwrap_or_default());
+        }
+    }
+    heights
+}
+
 /// Build a flat field, raise its centre `DEMO_RAISES` times, and print the
 /// resulting stepped plateau as an ASCII heightmap — the honest, textual
-/// "verified" observation for issue #6 before the 3D workbench exists (§5).
-fn print_terrain_demo(terrain: &TerrainParams) {
+/// "verified" observation for issue #6 before the 3D workbench (§5).
+/// Returns the built field so the workbench seam (below) can present it.
+fn print_terrain_demo(terrain: &TerrainParams) -> HeightField {
     let mid = DEMO_SIZE / 2;
     let mut field = HeightField::flat(DEMO_SIZE, DEMO_SIZE, 0);
 
@@ -87,6 +287,30 @@ fn print_terrain_demo(terrain: &TerrainParams) {
     println!(
         "  moved {total_moved} vertices, cost {total_cost}, invariant held = {}",
         field.satisfies_step_invariant(terrain.max_step),
+    );
+
+    field
+}
+
+/// Present the demo field through the no-op renderer — the GPU-free proof that
+/// the `RendererPort` seam (ADR 0020) is wired end-to-end. Builds a row-major
+/// [`TerrainFrame`] snapshot from the field and hands it to a [`NoopRenderer`],
+/// exactly as the on-screen adapter does. `render` is echoed to show the
+/// presentation-config projection is live.
+fn present_demo_frame(field: &HeightField, render: &RenderParams) {
+    let heights = frame_heights(field);
+    let frame = TerrainFrame::new(field.width(), field.height(), &heights);
+    let mut renderer = NoopRenderer::new();
+    renderer.present(frame);
+
+    println!(
+        "providence: workbench seam OK — presented a {w}×{d} frame via NoopRenderer \
+         ({n} frame(s); palette low {low:?}, background {bg:?})",
+        w = field.width(),
+        d = field.height(),
+        n = renderer.presented(),
+        low = render.palette.low_rgb,
+        bg = render.background.rgb,
     );
 }
 

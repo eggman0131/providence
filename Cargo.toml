@@ -10,6 +10,7 @@ members = [
     "crates/app",
     "crates/providence",
     "adapters/config-loader",
+    "adapters/renderer",
     "xtask",
 ]
 
@@ -27,6 +28,7 @@ providence-config = { path = "crates/config" }
 providence-ports = { path = "crates/ports" }
 providence-app = { path = "crates/app" }
 providence-config-loader = { path = "adapters/config-loader" }
+providence-renderer = { path = "adapters/renderer" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 toml = "1.1.2"
@@ -34,6 +36,22 @@ schemars = "1.2.1"
 garde = { version = "0.23.0", default-features = false, features = ["derive"] }
 syn = { version = "2.0.118", features = ["full", "visit", "parsing"] }
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
+# GPU/windowing stack for the workbench renderer adapter (ADR 0007, ADR 0020).
+# Confined to `providence-renderer` by the boundary checker; never reaches the
+# core. Pinned exact (I8); bumps arrive via Dependabot PRs gated by CI.
+wgpu = "=29.0.4"
+winit = "=0.30.13"
+bytemuck = { version = "=1.25.0", features = ["derive"] }
+pollster = "=0.4.0"
+png = "=0.18.1"
+# egui debug/HUD overlay (ADR 0015, ADR 0020; issue #8 Phase 3). Compiled only
+# under the renderer's `debug-hud` feature and confined there by the boundary
+# checker. Pinned exact (I8); egui-wgpu 0.35 targets wgpu ^29 and winit ^0.30 —
+# the same versions the renderer already pins, so a single wgpu stays in-tree.
+# default-features off on egui-wgpu drops the wasm/webgl extras (native-only,
+# ADR 0005); egui keeps `default_fonts` so the readout has a font to draw with.
+egui = { version = "=0.35.0", default-features = false, features = ["default_fonts"] }
+egui-wgpu = { version = "=0.35.0", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

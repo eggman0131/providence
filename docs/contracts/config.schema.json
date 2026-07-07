@@ -20,6 +20,271 @@
         "schema_version"
       ]
     },
+    "render": {
+      "description": "`render.*` — presentation parameters for the workbench renderer\n(ADR 0020 §4). Projected into a standalone [`RenderParams`] — **not**\ninto the core-injected [`Params`], because presentation is outside the\ndeterminism boundary (docs/40-parameterisation.md §2.2).",
+      "type": "object",
+      "properties": {
+        "background": {
+          "description": "`render.background.*` — the surface the world is drawn against.",
+          "type": "object",
+          "properties": {
+            "rgb": {
+              "description": "`render.background.rgb` — clear colour, linear RGB.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "rgb"
+          ]
+        },
+        "camera": {
+          "description": "`render.camera.*` — the view camera.",
+          "type": "object",
+          "properties": {
+            "far": {
+              "description": "`render.camera.far` — far clip-plane distance.",
+              "type": "number",
+              "format": "float"
+            },
+            "fov_degrees": {
+              "description": "`render.camera.fov_degrees` — vertical field of view, in degrees.",
+              "type": "number",
+              "format": "float",
+              "maximum": 179.0,
+              "minimum": 1.0
+            },
+            "initial_distance": {
+              "description": "`render.camera.initial_distance` — starting orbit distance from target.",
+              "type": "number",
+              "format": "float"
+            },
+            "initial_pitch_degrees": {
+              "description": "`render.camera.initial_pitch_degrees` — starting orbit pitch, in degrees.",
+              "type": "number",
+              "format": "float"
+            },
+            "initial_yaw_degrees": {
+              "description": "`render.camera.initial_yaw_degrees` — starting orbit yaw, in degrees.",
+              "type": "number",
+              "format": "float"
+            },
+            "max_distance": {
+              "description": "`render.camera.max_distance` — farthest the zoom may pull back. Positive.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.001
+            },
+            "max_pitch_degrees": {
+              "description": "`render.camera.max_pitch_degrees` — highest tilt, also within `(-90, 90)`.",
+              "type": "number",
+              "format": "float",
+              "maximum": 89.0,
+              "minimum": -89.0
+            },
+            "min_distance": {
+              "description": "`render.camera.min_distance` — closest the zoom may dolly in. Positive,\nso the eye can never sit on the target.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.001
+            },
+            "min_pitch_degrees": {
+              "description": "`render.camera.min_pitch_degrees` — lowest tilt. Held within `(-90, 90)`\nso the look-at framing never degenerates at the pole.",
+              "type": "number",
+              "format": "float",
+              "maximum": 89.0,
+              "minimum": -89.0
+            },
+            "near": {
+              "description": "`render.camera.near` — near clip-plane distance.",
+              "type": "number",
+              "format": "float"
+            },
+            "orbit_speed": {
+              "description": "`render.camera.orbit_speed` — degrees of rotation per pixel of drag.\nNon-negative (0 pins the orbit).",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            },
+            "pan_speed": {
+              "description": "`render.camera.pan_speed` — world units of look-at translation per pixel\nof drag. Non-negative.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            },
+            "zoom_speed": {
+              "description": "`render.camera.zoom_speed` — fraction of the current distance changed per\nunit of scroll. Non-negative.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "fov_degrees",
+            "near",
+            "far",
+            "initial_distance",
+            "initial_yaw_degrees",
+            "initial_pitch_degrees",
+            "min_distance",
+            "max_distance",
+            "min_pitch_degrees",
+            "max_pitch_degrees",
+            "orbit_speed",
+            "pan_speed",
+            "zoom_speed"
+          ]
+        },
+        "hud": {
+          "description": "`render.hud.*` — the read-only debug/HUD overlay (ADR 0015; issue #8\nPhase 3).",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "`render.hud.enabled` — draw the overlay (only when the `debug-hud`\nfeature is compiled in).",
+              "type": "boolean"
+            },
+            "show_camera": {
+              "description": "`render.hud.show_camera` — show the camera-pose section.",
+              "type": "boolean"
+            },
+            "show_reticle": {
+              "description": "`render.hud.show_reticle` — show the reticle vertex/height section.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "show_camera",
+            "show_reticle"
+          ]
+        },
+        "lighting": {
+          "description": "`render.lighting.*` — the directional light shading the surface.",
+          "type": "object",
+          "properties": {
+            "ambient": {
+              "description": "`render.lighting.ambient` — ambient light fraction in `[0, 1]`.",
+              "type": "number",
+              "format": "float",
+              "maximum": 1.0,
+              "minimum": 0.0
+            },
+            "azimuth_degrees": {
+              "description": "`render.lighting.azimuth_degrees` — light compass direction, in degrees.",
+              "type": "number",
+              "format": "float"
+            },
+            "diffuse": {
+              "description": "`render.lighting.diffuse` — diffuse light fraction in `[0, 1]`.",
+              "type": "number",
+              "format": "float",
+              "maximum": 1.0,
+              "minimum": 0.0
+            },
+            "elevation_degrees": {
+              "description": "`render.lighting.elevation_degrees` — light angle above the horizon.",
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "azimuth_degrees",
+            "elevation_degrees",
+            "ambient",
+            "diffuse"
+          ]
+        },
+        "mesh": {
+          "description": "`render.mesh.*` — how the height field becomes a drawable surface.",
+          "type": "object",
+          "properties": {
+            "vertical_scale": {
+              "description": "`render.mesh.vertical_scale` — world height of one integer step. A\nnon-negative presentation scale; 0 flattens the relief (degenerate but\nvalid), and negatives (which would invert it) are rejected.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "vertical_scale"
+          ]
+        },
+        "palette": {
+          "description": "`render.palette.*` — how vertex height maps to colour.",
+          "type": "object",
+          "properties": {
+            "high_rgb": {
+              "description": "`render.palette.high_rgb` — colour at the highest drawn height, linear RGB.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "low_rgb": {
+              "description": "`render.palette.low_rgb` — colour at the lowest drawn height, linear RGB.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "low_rgb",
+            "high_rgb"
+          ]
+        },
+        "window": {
+          "description": "`render.window.*` — the on-screen surface (and headless-capture size).",
+          "type": "object",
+          "properties": {
+            "height": {
+              "description": "`render.window.height` — initial surface height, in physical pixels.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1
+            },
+            "width": {
+              "description": "`render.window.width` — initial surface width, in physical pixels.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "width",
+            "height"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "camera",
+        "lighting",
+        "palette",
+        "background",
+        "mesh",
+        "window",
+        "hud"
+      ]
+    },
     "sim": {
       "description": "`sim.*` — deterministic-simulation parameters.",
       "type": "object",
@@ -162,6 +427,7 @@
   "additionalProperties": false,
   "required": [
     "meta",
-    "sim"
+    "sim",
+    "render"
   ]
 }

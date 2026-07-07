@@ -30,6 +30,13 @@ fn allowed_edges() -> BTreeMap<&'static str, BTreeSet<&'static str>> {
         "providence-config-loader",
         BTreeSet::from(["providence-config", "providence-ports"]),
     );
+    // The workbench renderer adapter (ADR 0020): implements RendererPort and
+    // reads RenderParams; it never imports the core (only a derived snapshot
+    // crosses the port). GPU deps (wgpu/winit) are confined to this crate.
+    allowed.insert(
+        "providence-renderer",
+        BTreeSet::from(["providence-config", "providence-ports"]),
+    );
     // Composition root: the only crate allowed to see concrete adapters.
     allowed.insert(
         "providence",
@@ -39,6 +46,7 @@ fn allowed_edges() -> BTreeMap<&'static str, BTreeSet<&'static str>> {
             "providence-ports",
             "providence-app",
             "providence-config-loader",
+            "providence-renderer",
         ]),
     );
     // The gate itself: dev tooling outside the runtime graph. May use the

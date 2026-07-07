@@ -3,3 +3,7 @@
 [alias]
 xtask = "run --quiet --package xtask --"
 gate = "run --quiet --package xtask -- gate"
+# The 3D terrain workbench (issue #8, ADR 0020): `cargo workbench` opens the
+# window; `cargo capture [PATH]` renders it headlessly to a PNG for /verify.
+workbench = "run --quiet --package providence -- workbench"
+capture = "run --quiet --package providence -- capture"

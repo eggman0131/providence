@@ -47,3 +47,68 @@ mana_cost = 1
 # Phase-1 gate scaffolding (contract §7.2): proves the config -> core wiring
 # end-to-end. Deleted when the Phase-3 core consumes real subsystem state.
 tick_increment = 1
+
+# --- Presentation (docs/40-parameterisation.md §2.2, ADR 0020) ---
+# render.* is the workbench renderer's config. It is NON-deterministic and sits
+# OUTSIDE the determinism boundary: the loader projects it into a standalone
+# RenderParams handed to the renderer adapter, never into the core's Params.
+
+[render.camera]
+# The workbench view camera (ADR 0020 §3). Initial pose + projection lens, then
+# the orbit/pan/zoom controller's bounds and sensitivities (issue #8 Phase 2).
+# The live pose is adapter-local view state and never crosses the boundary.
+fov_degrees = 45.0        # vertical field of view, degrees
+near = 0.1                # near clip-plane distance
+far = 1000.0              # far clip-plane distance
+initial_distance = 24.0   # starting orbit distance from the target
+initial_yaw_degrees = 45.0
+initial_pitch_degrees = 30.0
+# Orbit/pan/zoom limits — the camera stays inside this envelope (Phase 2).
+min_distance = 6.0        # closest the zoom may dolly in (> 0)
+max_distance = 120.0      # farthest the zoom may pull back
+min_pitch_degrees = 5.0   # lowest tilt, kept above the horizon
+max_pitch_degrees = 85.0  # highest tilt, kept below the pole
+# Drag/scroll sensitivities.
+orbit_speed = 0.4         # degrees of rotation per pixel of drag
+pan_speed = 0.05          # world units of pan per pixel of drag
+zoom_speed = 0.1          # fraction of distance changed per scroll unit
+
+[render.lighting]
+# One directional light plus ambient fill, enough to read the flat-shaded
+# stepped faces (issue #8 Phase 1).
+azimuth_degrees = 135.0   # light compass direction
+elevation_degrees = 45.0  # light angle above the horizon
+ambient = 0.25            # ambient fraction, [0, 1]
+diffuse = 0.85            # diffuse fraction, [0, 1]
+
+[render.palette]
+# Vertex height -> colour, lerped from low (lowest drawn height) to high
+# (highest), linear RGB.
+low_rgb = [0.24, 0.36, 0.16]
+high_rgb = [0.86, 0.86, 0.82]
+
+[render.background]
+# Clear colour the world is drawn against, linear RGB.
+rgb = [0.05, 0.06, 0.09]
+
+[render.mesh]
+# World-space height of one integer height step. Scales the LOOK of the relief
+# only; the core's integer heights are untouched (the renderer reads a snapshot,
+# ADR 0020 §1). 0 flattens the surface; negatives are rejected.
+vertical_scale = 1.0
+
+[render.window]
+# The on-screen surface the workbench opens, in physical pixels. Also the
+# resolution of the headless render-to-PNG capture used by /verify (ADR 0020 §2).
+width = 1280
+height = 720
+
+[render.hud]
+# The read-only debug/HUD overlay (ADR 0015; issue #8 Phase 3): an on-screen
+# readout of the grid size, the live camera pose, and the vertex under the
+# screen-centre reticle. Doubly guarded — the overlay compiles only under the
+# renderer's `debug-hud` cargo feature (off in a release build), and even then
+# draws only while `enabled`. It reads a derived snapshot and mutates nothing.
+enabled = true       # draw the overlay when the debug-hud feature is built in
+show_camera = true   # show the camera-pose section (yaw/pitch/distance, eye)
+show_reticle = true  # show the reticle vertex (x, y) + height section

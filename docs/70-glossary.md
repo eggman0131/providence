@@ -36,6 +36,8 @@
 - **Composition root** — the single place where adapters are wired to ports at startup.
 - **Observation** — the compact, structured, deterministic snapshot of state passed to the LLM.
 - **StrategyDecision** — the schema-validated *intent* the LLM returns; translated to legal commands by the engine.
+- **TerrainFrame** — the derived, read-only snapshot of the height field handed to `RendererPort` (grid dimensions + row-major heights; no simulation or camera state). Lets the renderer draw without importing the core. See [ADR 0020](./decisions/0020-workbench-runtime-and-rendererport.md).
+- **Workbench** — the movable-camera 3D `wgpu` view of the terrain height field, built so the land can be seen and judged in motion. The camera is adapter-local view state and never touches the sim. See [ADR 0019](./decisions/0019-foundation-first-terrain-workbench.md) / [ADR 0020](./decisions/0020-workbench-runtime-and-rendererport.md).
 
 ## Process & config terms
 

@@ -12,6 +12,16 @@ A single-player, offline, Mac-only god-game (working title "God"/"Providence") i
 - **Apply the [Context Diet](docs/README.md#context-diet) — load the *minimum* docs a task needs.** [`docs/README.md`](docs/README.md) maps task type → which docs to load and which to skip. Reading the whole repo "to be safe" is context bloat and is explicitly discouraged. Don't restate the docs; link to them.
 - **Architectural changes require an ADR** in [`docs/decisions/`](docs/decisions/) (use [`template.md`](docs/decisions/template.md)). No silent changes to boundaries, ports, dependencies, namespaces, determinism, or the gate.
 
+## Architect workflow (designing a feature)
+
+When the Director asks you to **design a feature** — not merely implement a settled spec — follow this loop **in order**; do not skip ahead to a draft:
+
+1. **Read the contract and architecture docs first.** Load [`docs/30-ai-agent-contract.md`](docs/30-ai-agent-contract.md) (the constitution) and [`docs/20-architecture.md`](docs/20-architecture.md), plus only the subsystem docs the feature actually touches (Context Diet). Know the invariants (I1–I9) and the crate graph before proposing anything.
+2. **Clarify outcomes with the Director.** Before drafting, confirm what the feature should do *for the player* — the experience it creates and the design flexibility it should open or preserve. Ask about **outcomes, not implementation**, and resolve the ambiguity here, not after a draft exists.
+3. **Draft the issue using the [`.github/ISSUE_TEMPLATE/feature.md`](.github/ISSUE_TEMPLATE/feature.md) structure** — every section, in order, starting with **Player & Experience Impact**. Map dependencies inward to the deterministic core, surface each architectural choice as an **Open Decision** (ADR candidate, label `adr-needed`), and break the work into context-window-sized **Phases** that each leave the gate green.
+
+**Speak the Director's language.** Every decision you explain, escalate (§1.4), or record is framed in terms of **player experience and design flexibility — never implementation details** ([ADR 0018](docs/decisions/0018-outcome-framed-decision-rationale.md), contract §4.2). The gate judges the implementation better than a human can; the Director is the one judge of *outcomes*. "We'll use an integer height field" is not a rationale they can rule on; "crisper stepped land with a drift-free core" is.
+
 ## Commands
 
 The gate is the single definition of "green", identical locally and in CI. Everything routes through `cargo xtask` (aliases in [`.cargo/config.toml`](.cargo/config.toml)).

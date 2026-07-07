@@ -11,6 +11,9 @@ publish.workspace = true
 providence-app = { workspace = true }
 providence-config = { workspace = true }
 providence-config-loader = { workspace = true }
+# The composition root drives the terrain core directly for the pre-workbench
+# smoke render (issue #6 §5); core is inward of the root, so the edge is legal.
+providence-core = { workspace = true }
 
 [lints]
 workspace = true

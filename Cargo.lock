@@ -109,6 +109,7 @@ dependencies = [
  "providence-app",
  "providence-config",
  "providence-config-loader",
+ "providence-core",
 ]
 
 [[package]]

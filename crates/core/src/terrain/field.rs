@@ -8,9 +8,9 @@
 //!
 //! The governing rule is the *step invariant*
 //! ([`HeightField::satisfies_step_invariant`]): orthogonally-adjacent vertices
-//! differ in height by at most `sim.terrain.max_step`. Phase 1 supplies the
-//! state and this predicate; the shaping operations that must preserve it
-//! (raise/lower with a bounded cascade) arrive in Phase 2.
+//! differ in height by at most `sim.terrain.max_step`. This module supplies
+//! the state and this predicate; the shaping operations that must preserve it
+//! (raise/lower with a bounded cascade) live in [`super::shape`].
 
 use alloc::vec::Vec;
 
@@ -85,6 +85,23 @@ impl HeightField {
     pub fn get(&self, x: u32, y: u32) -> Option<Height> {
         if x < self.width && y < self.height {
             Some(self.cells[self.index(x, y)])
+        } else {
+            None
+        }
+    }
+
+    /// Overwrite the height at `(x, y)`, returning the previous value, or
+    /// `None` if the coordinate is out of bounds.
+    ///
+    /// Crate-internal: the shaping operations in [`super::shape`] are the only
+    /// writers, so every mutation runs through the step-invariant-preserving
+    /// cascade rather than poking cells directly.
+    pub(crate) fn set(&mut self, x: u32, y: u32, value: Height) -> Option<Height> {
+        if x < self.width && y < self.height {
+            let index = self.index(x, y);
+            let previous = self.cells[index];
+            self.cells[index] = value;
+            Some(previous)
         } else {
             None
         }

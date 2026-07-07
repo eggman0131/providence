@@ -46,5 +46,6 @@ Balance/content/number changes do **not** need an ADR — they are config tasks.
 | [0016](./0016-exploration-lane-and-subsystem-isolation.md) | Exploration lane and subsystem isolation | Accepted |
 | [0017](./0017-vertex-heightfield-terrain.md) | Vertex height field terrain with a bounded-step invariant | Accepted |
 | [0018](./0018-outcome-framed-decision-rationale.md) | Decisions are explained in terms of outcomes, not implementation | Accepted |
+| [0019](./0019-foundation-first-terrain-workbench.md) | Foundation-first delivery: terrain module + prioritised 3D terrain workbench (supersedes §7.4 sequencing) | Accepted |
 
 > **Planning lives on GitHub** ([ADR 0012](./0012-project-management-on-github.md)): tasks and bugs are [Issues](https://github.com/eggman0131/providence/issues); the roadmap / "what's next" is the [Project board](https://github.com/eggman0131/providence/projects). ADRs stay the record of *why*; issues track *what/when*. Both previously-open items are now settled: the **LLM runtime & model** ([#8](https://github.com/eggman0131/providence-legacy/issues/8)) by [ADR 0014](./0014-ollama-local-llm-runtime.md), and the **debug/HUD UI layer** ([#9](https://github.com/eggman0131/providence-legacy/issues/9)) by [ADR 0015](./0015-debug-hud-ui-layer.md).

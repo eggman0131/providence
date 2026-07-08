@@ -52,6 +52,17 @@ For **future design flexibility** this is the load-bearing move: terrain type be
   - The **replay/seed determinism test is unchanged** — the core is not touched.
 - **Docs to update (this change):** this ADR + the [index](./README.md); [`20-architecture.md`](../20-architecture.md) §2.4 (the `RendererPort`/`SimDriver` snapshot payload); [`40-parameterisation.md`](../40-parameterisation.md) (`render.material.*`, `render.palette.*` removed); [`CLAUDE.md`](../../CLAUDE.md) (the workbench now renders sim-aligned material bands).
 
+## Phase 2 — the waterline datum and the living water surface
+
+The second field-by-field growth this ADR anticipated (issue [#22](https://github.com/eggman0131/providence/issues/22) Phase 2). It adds the *waterline* to the derived snapshot and the renderer floats a **living water surface** at it — a translucent, gently shimmering plane, built to react to a changing shoreline (the Director's ruling).
+
+1. **`TerrainFrame` grows a `waterline: Height`** — the `sim.worldgen.sea_level` datum, carried alongside `heights`/`types` (a picking frame passes an unread `0`). It is *derived* read-only data, so the boundary and I3 hold exactly as for the type channel.
+2. **`SimDriver` is unchanged.** Unlike `types` (which re-derives on every edit and so needed a pull method), the waterline is the **session-constant** datum: the renderer caches it from the initial `present` and reconstructs the interactive frame with it. The shoreline still tracks live edits **for free** — it moves because the *terrain* crosses the fixed datum, not because the datum moves — so no new pull seam is added (the issue's "no new seam").
+3. **The renderer draws a translucent water pass** (`render.water.*`): a flat plane spanning the grid at the waterline, **alpha-blended over the terrain** and depth-tested (`Less`, no depth-write) so land above the waterline occludes it — the coastline for free, dynamic-shoreline-ready. Worldgen pins the sea floor *flat at the waterline* (ADR 0021), so the plane would be coplanar with the seabed; a small `render.water.surface_lift` floats it just above (no z-fighting), kept below one height step so it never rises over the first dry shore.
+4. **The sea is alive.** A time-driven shimmer (`ripple_amplitude`/`ripple_speed`/`ripple_scale`) modulates the surface brightness in the water shader, timed on an **adapter-local wall-clock at the edge** — exactly like the camera (ADR 0020 §3) and the shaping animation (ADR 0022 §5). No clock, float, or frame-rate value reaches the core; the replay golden is **unchanged**.
+
+The `render.water.*` keys (`rgb`/`opacity`/`surface_lift`/`ripple_amplitude`/`ripple_speed`/`ripple_scale`) gain schema entries; the pure water-plane geometry is gate-tested; the GPU water pass is exercised only through the headless capture (I9), whose filmstrip advances the shimmer clock so the sea's *motion* is observable without a display. This ships the calm version; flow, foam, and turbulence are a later escalation the shape leaves room for. Immovable features (Phase 3) are the third and final growth under this ADR.
+
 ## Alternatives considered
 
 - **Renderer re-derives the type from heights + thresholds.** Rejected: it pulls the model's classification *rules* into the renderer — against ADR 0020's "key on derived state, not the model's internals" — and duplicates the core's `classify_vertex`. Carrying the already-derived type keeps the rules in one place.

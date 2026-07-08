@@ -37,6 +37,7 @@ pub mod light;
 pub mod math;
 pub mod mesh;
 pub mod pick;
+pub mod water;
 pub mod window;
 
 /// The read-only debug/HUD overlay (ADR 0015; issue #8 Phase 3). Compiled only
@@ -51,6 +52,7 @@ pub use headless::HeadlessRenderer;
 pub use input::{ShapeAction, is_shaping_click, shape_action};
 pub use mesh::{Mesh, build_mesh, vertex_position};
 pub use pick::{PickedVertex, Ray, cursor_ndc};
+pub use water::WaterPlane;
 pub use window::WindowRenderer;
 
 use providence_ports::{RendererPort, TerrainFrame};
@@ -91,7 +93,7 @@ mod tests {
     #[test]
     fn noop_renderer_counts_presents_but_draws_nothing() {
         let heights = [0, 1, 1, 2];
-        let frame = TerrainFrame::new(2, 2, &heights, &[]);
+        let frame = TerrainFrame::new(2, 2, &heights, &[], 0);
         let mut renderer = NoopRenderer::new();
         assert_eq!(renderer.presented(), 0);
         renderer.present(frame);

@@ -22,6 +22,7 @@ use crate::hud::{Hud, Readout, ScreenDescriptor};
 use crate::mesh::{Mesh, build_mesh};
 #[cfg(feature = "debug-hud")]
 use crate::pick::GridSnapshot;
+use crate::water::WaterPlane;
 
 /// The captured image is 8-bit RGBA; the render target is sRGB so linear shader
 /// colours land encoded correctly for a PNG.
@@ -36,6 +37,15 @@ pub struct HeadlessRenderer {
     params: RenderParams,
     mesh: Option<Mesh>,
     view: Option<Camera>,
+    /// The living water surface to float over the terrain (ADR 0023, Phase 2).
+    /// Set from the presented frame's waterline, or supplied explicitly for a
+    /// mid-animation still via [`present_mesh`](Self::present_mesh); `None` draws
+    /// terrain only.
+    water: Option<WaterPlane>,
+    /// The wall-clock time (seconds) the water shimmer is drawn at (ADR 0023,
+    /// Phase 2). `0` by default — a deterministic still — but a filmstrip can
+    /// advance it across frames to capture the sea *moving* without a display.
+    time: f32,
     /// The presented grid, kept so the HUD can pick the reticle vertex for the
     /// capture (issue #8 Phase 3). Only needed by the overlay.
     #[cfg(feature = "debug-hud")]
@@ -51,6 +61,8 @@ impl HeadlessRenderer {
             params,
             mesh: None,
             view: None,
+            water: None,
+            time: 0.0,
             #[cfg(feature = "debug-hud")]
             grid: None,
         }
@@ -64,13 +76,26 @@ impl HeadlessRenderer {
         self.view = Some(camera);
     }
 
+    /// Set the wall-clock time (seconds) the water shimmer is drawn at (ADR 0023,
+    /// Phase 2). Adapter-local, like [`set_view`](Self::set_view): the composition
+    /// root advances it across a filmstrip's frames so the *moving* sea is
+    /// observable without a display. Left at `0`, each capture is a deterministic
+    /// still.
+    pub fn set_time(&mut self, seconds: f32) {
+        self.time = seconds;
+    }
+
     /// Present a pre-built [`Mesh`] directly, bypassing [`present`]'s height →
     /// mesh step (ADR 0022 §5; issue #9/#10 Phase 3). The composition root uses
     /// this to capture a **mid-animation still**: a [`MeshTween`](crate::anim::MeshTween)
     /// eased to a chosen fraction, so the interpolation is proven without a
-    /// display. The static path still uses [`present`](RendererPort::present).
-    pub fn present_mesh(&mut self, mesh: Mesh) {
+    /// display. `water` floats the living sea over the still when supplied so the
+    /// filmstrip shows the coastline emerging as the land rises (ADR 0023,
+    /// Phase 2); `None` draws terrain only. The static path still uses
+    /// [`present`](RendererPort::present).
+    pub fn present_mesh(&mut self, mesh: Mesh, water: Option<WaterPlane>) {
         self.mesh = Some(mesh);
+        self.water = water;
     }
 
     /// Render the most recently presented frame to a PNG at `path`. Errors if
@@ -103,10 +128,20 @@ impl HeadlessRenderer {
         let color_view = target.create_view(&wgpu::TextureViewDescriptor::default());
         let depth_view = gpu::depth_view(&device, width, height);
 
-        let mut scene = TerrainScene::new(&device, CAPTURE_FORMAT, &self.params, mesh);
+        let mut scene = TerrainScene::new(
+            &device,
+            CAPTURE_FORMAT,
+            &self.params,
+            mesh,
+            self.water.as_ref(),
+        );
         if let Some(view) = self.view {
             scene.set_camera(view);
         }
+        // Draw the shimmer at the requested time (0 = a deterministic still; a
+        // filmstrip advances it so the sea's *motion* is captured, ADR 0023
+        // Phase 2). Wall-clock enters only here, never the core (I3).
+        scene.set_time(self.time);
         scene.update(&queue, width, height);
 
         // The read-only HUD overlay for the capture (issue #8 Phase 3): built
@@ -218,6 +253,15 @@ impl RendererPort for HeadlessRenderer {
             &frame,
             self.params.mesh.vertical_scale,
             &self.params.material,
+        ));
+        // Float the living water surface at the frame's waterline (ADR 0023,
+        // Phase 2), so a headless capture shows the sea and the coastline.
+        self.water = Some(WaterPlane::new(
+            frame.width(),
+            frame.height(),
+            frame.waterline(),
+            self.params.mesh.vertical_scale,
+            self.params.water.surface_lift,
         ));
         #[cfg(feature = "debug-hud")]
         {

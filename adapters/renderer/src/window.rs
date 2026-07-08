@@ -29,6 +29,7 @@ use crate::hud::{Hud, Readout, ScreenDescriptor};
 use crate::input::{is_shaping_click, shape_action};
 use crate::mesh::{Mesh, build_mesh, vertex_position};
 use crate::pick::{GridSnapshot, cursor_ndc, pick_vertex, screen_ray};
+use crate::water::WaterPlane;
 
 /// The window title bar text for the workbench.
 const WINDOW_TITLE: &str = "Providence — Terrain Workbench";
@@ -66,6 +67,14 @@ pub struct WindowRenderer {
     /// (issue #9 Phase 2) and the HUD can pick the reticle vertex (issue #8
     /// Phase 3). Refreshed from the driver after every shaping command.
     grid: GridSnapshot,
+    /// The living water surface (ADR 0023, Phase 2), built from the presented
+    /// frame's waterline. `None` until the first `present`; constant thereafter
+    /// (the datum and grid extent do not change under shaping).
+    water: Option<WaterPlane>,
+    /// The waterline datum from the presented frame, kept so a shaping rebuild
+    /// can reconstruct a snapshot that carries it (the value itself is unread by
+    /// terrain meshing; the water plane is fixed).
+    waterline: i32,
 }
 
 impl WindowRenderer {
@@ -76,6 +85,8 @@ impl WindowRenderer {
             params,
             mesh: Mesh::default(),
             grid: GridSnapshot::default(),
+            water: None,
+            waterline: 0,
         }
     }
 
@@ -93,6 +104,8 @@ impl WindowRenderer {
             params: self.params,
             mesh: self.mesh,
             grid: self.grid,
+            water: self.water,
+            waterline: self.waterline,
             input,
             driver,
             state: None,
@@ -113,6 +126,17 @@ impl RendererPort for WindowRenderer {
         // The grid is now kept unconditionally: a shaping click picks against it
         // (issue #9 Phase 2), not only the debug HUD (issue #8 Phase 3).
         self.grid = GridSnapshot::from_frame(&frame);
+        // Float the living water surface at the frame's waterline (ADR 0023,
+        // Phase 2). The plane is constant for the session (the datum and grid
+        // extent do not change under shaping), so it is built once here.
+        self.waterline = frame.waterline();
+        self.water = Some(WaterPlane::new(
+            frame.width(),
+            frame.height(),
+            frame.waterline(),
+            self.params.mesh.vertical_scale,
+            self.params.water.surface_lift,
+        ));
     }
 }
 
@@ -125,6 +149,12 @@ struct WorkbenchApp<'driver> {
     /// The presented grid, handed to the window state once the window exists so
     /// a click (and the HUD) can pick against it.
     grid: GridSnapshot,
+    /// The living water surface (ADR 0023, Phase 2), handed to the window state
+    /// so the scene floats it over the terrain. Seeded by the initial `present`.
+    water: Option<WaterPlane>,
+    /// The waterline datum (from the presented frame), so a shaping rebuild can
+    /// reconstruct a snapshot carrying it.
+    waterline: i32,
     /// The shaping controls (`input.shape.*`) — which button raises/lowers and
     /// the click-vs-drag threshold.
     input: InputParams,
@@ -153,7 +183,14 @@ impl ApplicationHandler for WorkbenchApp<'_> {
                 return;
             }
         };
-        match WindowState::new(window, &self.params, &self.mesh, &self.input) {
+        match WindowState::new(
+            window,
+            &self.params,
+            &self.mesh,
+            self.water.as_ref(),
+            self.waterline,
+            &self.input,
+        ) {
             Ok(mut state) => {
                 // The window picks against the presented grid on a click, so it
                 // is seeded unconditionally now (issue #9 Phase 2), not only for
@@ -268,6 +305,18 @@ struct WindowState {
     /// The mesh's vertical scale, so picks and rebuilt geometry line up with
     /// what is drawn.
     vertical_scale: f32,
+    /// The waterline datum (from the presented frame), so a shaping rebuild
+    /// reconstructs a snapshot carrying it (ADR 0023, Phase 2). The water plane
+    /// itself is fixed and lives in the scene.
+    waterline: i32,
+    /// Whether the water shimmer is animating (`render.water.ripple_*` both
+    /// positive). When it is, each frame requests another redraw so the sea keeps
+    /// moving; a still sea leaves the window event-driven as before.
+    water_animates: bool,
+    /// The wall-clock origin the water shimmer is timed from (ADR 0023, Phase 2).
+    /// The only water clock in the whole path lives here, at the edge — nothing
+    /// the core computes reads it (I3), exactly like the shaping animation.
+    clock_start: Instant,
     /// The read-only debug/HUD overlay, when enabled (issue #8 Phase 3).
     #[cfg(feature = "debug-hud")]
     hud: Option<Hud>,
@@ -278,6 +327,8 @@ impl WindowState {
         window: Arc<Window>,
         params: &RenderParams,
         mesh: &Mesh,
+        water: Option<&WaterPlane>,
+        waterline: i32,
         input: &InputParams,
     ) -> Result<Self, RendererError> {
         let instance = wgpu::Instance::default();
@@ -308,7 +359,7 @@ impl WindowState {
             .unwrap_or(config.format);
         surface.configure(&device, &config);
 
-        let scene = TerrainScene::new(&device, config.format, params, mesh);
+        let scene = TerrainScene::new(&device, config.format, params, mesh, water);
         scene.update(&queue, width, height);
         let depth_view = gpu::depth_view(&device, width, height);
 
@@ -338,6 +389,9 @@ impl WindowState {
             material: params.material.clone(),
             grid: GridSnapshot::default(),
             vertical_scale: params.mesh.vertical_scale,
+            waterline,
+            water_animates: params.water.ripple_amplitude > 0.0 && params.water.ripple_speed > 0.0,
+            clock_start: Instant::now(),
             #[cfg(feature = "debug-hud")]
             hud,
         })
@@ -427,7 +481,9 @@ impl WindowState {
         let (width, height) = (driver.width(), driver.height());
         let heights = driver.heights().to_vec();
         let types = driver.types().to_vec();
-        let frame = TerrainFrame::new(width, height, &heights, &types);
+        // The waterline is the session-constant datum, so it is cached rather
+        // than re-pulled (the water plane is fixed; only the terrain is rebuilt).
+        let frame = TerrainFrame::new(width, height, &heights, &types, self.waterline);
         let target = build_mesh(&frame, self.vertical_scale, &self.material);
         self.grid = GridSnapshot::from_frame(&frame);
         // The shaped vertex's world (x, z) is the ripple centre (the ripple lags
@@ -542,6 +598,16 @@ impl WindowState {
         // alive until it settles; requesting eagerly means a skipped frame below
         // (a lost surface) still gets another shot.
         if self.advance_animation() {
+            self.window.request_redraw();
+        }
+
+        // Advance the water shimmer to the current wall-clock (ADR 0023, Phase 2)
+        // and, while the sea animates, keep requesting redraws so it keeps moving
+        // — the only water clock is read here, at the edge (I3). A still sea
+        // (`ripple_*` = 0) leaves the window event-driven as before.
+        self.scene
+            .set_time(self.clock_start.elapsed().as_secs_f32());
+        if self.water_animates {
             self.window.request_redraw();
         }
 

@@ -38,8 +38,8 @@ use providence_core::terrain::{
 };
 use providence_ports::{RendererPort, SimDriver, TerrainCommand, TerrainFrame};
 use providence_renderer::{
-    HeadlessRenderer, Mesh, MeshTween, NoopRenderer, OrbitController, WindowRenderer, build_mesh,
-    ripple_delays, vertex_position,
+    HeadlessRenderer, Mesh, MeshTween, NoopRenderer, OrbitController, WaterPlane, WindowRenderer,
+    build_mesh, ripple_delays, vertex_position,
 };
 
 /// Fixed demo values for the smoke run — not behavioural config (the smoke
@@ -290,6 +290,7 @@ fn run_workbench() -> ExitCode {
             session.height(),
             session.heights(),
             session.types(),
+            params.sim.worldgen.sea_level,
         );
         renderer.present(frame);
     }
@@ -329,7 +330,13 @@ fn run_capture(args: &[String]) -> ExitCode {
     print_terrain_census(&field, &features, &params);
     let heights = frame_heights(&field);
     let types = terrain_types(&heights, &params);
-    let frame = TerrainFrame::new(field.width(), field.height(), &heights, &types);
+    let frame = TerrainFrame::new(
+        field.width(),
+        field.height(),
+        &heights,
+        &types,
+        params.sim.worldgen.sea_level,
+    );
 
     let mut renderer = HeadlessRenderer::new(render.clone());
     // Adapter-local camera override for the multi-angle self-check (ADR 0020
@@ -449,13 +456,14 @@ fn run_capture_shape(args: &[String]) -> ExitCode {
     // across `total_ms` shows the cascade settling from the inside out.
     let before_types = terrain_types(&before_heights, &params);
     let after_types = terrain_types(&after_heights, &params);
+    let sea_level = params.sim.worldgen.sea_level;
     let from = build_mesh(
-        &TerrainFrame::new(width, height, &before_heights, &before_types),
+        &TerrainFrame::new(width, height, &before_heights, &before_types, sea_level),
         render.mesh.vertical_scale,
         &render.material,
     );
     let to = build_mesh(
-        &TerrainFrame::new(width, height, &after_heights, &after_types),
+        &TerrainFrame::new(width, height, &after_heights, &after_types, sea_level),
         render.mesh.vertical_scale,
         &render.material,
     );
@@ -468,13 +476,29 @@ fn run_capture_shape(args: &[String]) -> ExitCode {
     let tween = MeshTween::new(from, to, delays);
     let total_ms = tween.total_ms(render.animation.duration_ms);
 
+    // Float the living water surface over each still (ADR 0023, Phase 2) so the
+    // filmstrip shows the coastline emerging as the sea vertex rises above the
+    // waterline — the reactive shoreline, made visible without a display.
+    let water = WaterPlane::new(
+        width,
+        height,
+        sea_level,
+        render.mesh.vertical_scale,
+        render.water.surface_lift,
+    );
+
     let last_frame = SHAPE_PROOF_FRAMES.saturating_sub(1).max(1);
     for k in 0..SHAPE_PROOF_FRAMES {
         let elapsed = total_ms * k as f32 / last_frame as f32;
         let path = dir.join(format!("shape-frame-{k:02}.png"));
+        // Advance the water shimmer on the same timeline as the shaping ripple,
+        // so the filmstrip shows a *living* sea over the emerging coastline
+        // (ADR 0023, Phase 2) — the display-free proof the water animates.
         if let Err(code) = capture_mesh(
             tween.at(elapsed, render.animation.duration_ms),
             &render,
+            Some(water),
+            elapsed / 1000.0,
             &path,
         ) {
             return code;
@@ -499,10 +523,18 @@ fn run_capture_shape(args: &[String]) -> ExitCode {
 /// Capture a pre-built [`Mesh`] to a PNG through the headless renderer
 /// (ADR 0022 §5): the shaping stills are eased [`MeshTween`] frames, so this
 /// bypasses `present`'s height→mesh step via `present_mesh` — the display-free
-/// way to see a mid-animation surface.
-fn capture_mesh(mesh: Mesh, render: &RenderParams, path: &Path) -> Result<(), ExitCode> {
+/// way to see a mid-animation surface. `water` floats the living sea over the
+/// still (ADR 0023, Phase 2) so the filmstrip shows the emerging coastline.
+fn capture_mesh(
+    mesh: Mesh,
+    render: &RenderParams,
+    water: Option<WaterPlane>,
+    time_secs: f32,
+    path: &Path,
+) -> Result<(), ExitCode> {
     let mut renderer = HeadlessRenderer::new(render.clone());
-    renderer.present_mesh(mesh);
+    renderer.present_mesh(mesh, water);
+    renderer.set_time(time_secs);
     renderer.capture(path).map_err(|error| {
         eprintln!("providence: capture error: {error}");
         ExitCode::FAILURE
@@ -668,8 +700,9 @@ fn print_terrain_demo(terrain: &TerrainParams) -> HeightField {
 fn present_demo_frame(field: &HeightField, render: &RenderParams) {
     let heights = frame_heights(field);
     // The demo present only proves the seam through the no-op renderer, which
-    // draws nothing — so a heights-only frame (empty types, ADR 0023) suffices.
-    let frame = TerrainFrame::new(field.width(), field.height(), &heights, &[]);
+    // draws nothing — so a heights-only frame (empty types, ADR 0023) with an
+    // unread `0` waterline suffices.
+    let frame = TerrainFrame::new(field.width(), field.height(), &heights, &[], 0);
     let mut renderer = NoopRenderer::new();
     renderer.present(frame);
 

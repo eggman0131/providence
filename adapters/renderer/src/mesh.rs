@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn positions_cover_every_vertex_row_major() {
         let heights = [0, 1, 1, 2]; // 2×2
-        let frame = TerrainFrame::new(2, 2, &heights, &[]);
+        let frame = TerrainFrame::new(2, 2, &heights, &[], 0);
         let positions = vertex_positions(&frame, 1.0);
         assert_eq!(positions.len(), 4);
         assert!(approx(positions[0][1], 0.0), "(0,0) height 0 → y 0");
@@ -306,7 +306,7 @@ mod tests {
         // 3×3 vertices → 2×2 cells → 4 cells × 2 triangles × 3 vertices = 24.
         let heights = [0; 9];
         let types = land(9);
-        let frame = TerrainFrame::new(3, 3, &heights, &types);
+        let frame = TerrainFrame::new(3, 3, &heights, &types, 0);
         let mesh = build_mesh(&frame, 1.0, &MATERIAL);
         assert_eq!(mesh.triangle_count(), 8);
         assert_eq!(mesh.vertices.len(), 24);
@@ -317,7 +317,7 @@ mod tests {
     fn a_frame_too_small_for_a_cell_yields_no_geometry() {
         let heights = [3, 4];
         let types = land(2);
-        let frame = TerrainFrame::new(2, 1, &heights, &types); // one row: no cell
+        let frame = TerrainFrame::new(2, 1, &heights, &types, 0); // one row: no cell
         assert!(build_mesh(&frame, 1.0, &MATERIAL).is_empty());
     }
 
@@ -325,7 +325,7 @@ mod tests {
     fn a_flat_field_has_upward_unit_normals() {
         let heights = [5; 4]; // 2×2, all equal → the surface is level
         let types = land(4);
-        let frame = TerrainFrame::new(2, 2, &heights, &types);
+        let frame = TerrainFrame::new(2, 2, &heights, &types, 0);
         let mesh = build_mesh(&frame, 1.0, &MATERIAL);
         for vertex in &mesh.vertices {
             assert!(
@@ -341,7 +341,7 @@ mod tests {
         // unit length, so lighting reads the top face whatever the winding.
         let heights = [0, 1, 1, 2];
         let types = land(4);
-        let frame = TerrainFrame::new(2, 2, &heights, &types);
+        let frame = TerrainFrame::new(2, 2, &heights, &types, 0);
         let mesh = build_mesh(&frame, 1.0, &MATERIAL);
         for vertex in &mesh.vertices {
             let [nx, ny, nz] = vertex.normal;
@@ -361,7 +361,7 @@ mod tests {
             TerrainType::Land,
             TerrainType::Mountain,
         ];
-        let frame = TerrainFrame::new(2, 2, &heights, &types);
+        let frame = TerrainFrame::new(2, 2, &heights, &types, 0);
         let mesh = build_mesh(&frame, 1.0, &MATERIAL);
         let has = |c: [f32; 3]| mesh.vertices.iter().any(|v| approx3(v.color, c));
         assert!(
@@ -386,7 +386,7 @@ mod tests {
             TerrainType::Land,
             TerrainType::Mountain,
         ];
-        let frame = TerrainFrame::new(2, 2, &heights, &types);
+        let frame = TerrainFrame::new(2, 2, &heights, &types, 0);
         assert_eq!(mountain_bounds(&frame), (8, 14));
     }
 
@@ -394,7 +394,7 @@ mod tests {
     fn mountain_bounds_of_a_mountainless_frame_collapse() {
         let heights = [-2, 0, 5, 3];
         let types = land(4);
-        let frame = TerrainFrame::new(2, 2, &heights, &types);
+        let frame = TerrainFrame::new(2, 2, &heights, &types, 0);
         assert_eq!(
             mountain_bounds(&frame),
             (0, 0),

@@ -12,7 +12,7 @@ use providence_config::{
     InputParams, LightingParams, ManaMode, ManaParams, MaterialParams, MeshParams, MountainContent,
     OpponentParams, Params, PlaceholderParams, PointerButton, RaiseParams, RenderParams,
     RockContent, Shape, ShapeInputParams, ShoreContent, SimParams, TerrainContent, TerrainParams,
-    TreeContent, WinLossParams, WindowParams, WorldgenParams,
+    TreeContent, WaterParams, WinLossParams, WindowParams, WorldgenParams,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -317,6 +317,9 @@ pub struct RenderSection {
     /// `render.material.*` — the terrain-type material table (ADR 0023).
     #[garde(dive)]
     pub material: MaterialSection,
+    /// `render.water.*` — the living water surface (ADR 0023, Phase 2).
+    #[garde(dive)]
+    pub water: WaterSection,
     /// `render.background.*` — the surface the world is drawn against.
     #[garde(dive)]
     pub background: BackgroundSection,
@@ -432,6 +435,35 @@ pub struct MaterialSection {
     /// highest vertices, linear RGB.
     #[garde(skip)]
     pub peak_rgb: [f32; 3],
+}
+
+/// `render.water.*` — the living water surface (ADR 0023, Phase 2): a
+/// translucent, gently shimmering plane floated at the waterline.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct WaterSection {
+    /// `render.water.rgb` — the water surface colour, linear RGB.
+    #[garde(skip)]
+    pub rgb: [f32; 3],
+    /// `render.water.opacity` — base surface alpha, in `[0, 1]`.
+    #[garde(range(min = 0.0, max = 1.0))]
+    pub opacity: f32,
+    /// `render.water.surface_lift` — world units the drawn surface sits above the
+    /// seabed datum. Non-negative (0 places it exactly on the flat seabed).
+    #[garde(range(min = 0.0))]
+    pub surface_lift: f32,
+    /// `render.water.ripple_amplitude` — shimmer brightness modulation.
+    /// Non-negative; 0 is a still sea.
+    #[garde(range(min = 0.0))]
+    pub ripple_amplitude: f32,
+    /// `render.water.ripple_speed` — shimmer travel speed (radians/second).
+    /// Non-negative; 0 freezes the pattern.
+    #[garde(range(min = 0.0))]
+    pub ripple_speed: f32,
+    /// `render.water.ripple_scale` — shimmer spatial frequency (radians/world
+    /// unit). Non-negative; 0 makes the whole sea pulse as one.
+    #[garde(range(min = 0.0))]
+    pub ripple_scale: f32,
 }
 
 /// `render.background.*` — the clear colour the world is drawn against.
@@ -637,6 +669,14 @@ impl ConfigRoot {
                 land_rgb: self.render.material.land_rgb,
                 mountain_rgb: self.render.material.mountain_rgb,
                 peak_rgb: self.render.material.peak_rgb,
+            },
+            water: WaterParams {
+                rgb: self.render.water.rgb,
+                opacity: self.render.water.opacity,
+                surface_lift: self.render.water.surface_lift,
+                ripple_amplitude: self.render.water.ripple_amplitude,
+                ripple_speed: self.render.water.ripple_speed,
+                ripple_scale: self.render.water.ripple_scale,
             },
             background: BackgroundParams {
                 rgb: self.render.background.rgb,

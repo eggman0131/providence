@@ -231,6 +231,9 @@ mod tests {
         water_rgb = [0.16, 0.34, 0.44]\nshore_rgb = [0.80, 0.74, 0.53]\n\
         land_rgb = [0.33, 0.49, 0.24]\nmountain_rgb = [0.45, 0.42, 0.38]\n\
         peak_rgb = [0.92, 0.93, 0.95]\n\n\
+        [render.water]\n\
+        rgb = [0.11, 0.34, 0.52]\nopacity = 0.72\nsurface_lift = 0.2\n\
+        ripple_amplitude = 0.14\nripple_speed = 1.6\nripple_scale = 0.55\n\n\
         [render.background]\n\
         rgb = [0.05, 0.06, 0.09]\n\n\
         [render.mesh]\nvertical_scale = 1.0\n\n\
@@ -433,6 +436,13 @@ mod tests {
         assert!(approx(render.lighting.ambient, 0.25));
         assert!(approx3(render.material.shore_rgb, [0.80, 0.74, 0.53]));
         assert!(approx3(render.material.peak_rgb, [0.92, 0.93, 0.95]));
+        // The living water surface projects through (ADR 0023, Phase 2).
+        assert!(approx3(render.water.rgb, [0.11, 0.34, 0.52]));
+        assert!(approx(render.water.opacity, 0.72));
+        assert!(approx(render.water.surface_lift, 0.2));
+        assert!(approx(render.water.ripple_amplitude, 0.14));
+        assert!(approx(render.water.ripple_speed, 1.6));
+        assert!(approx(render.water.ripple_scale, 0.55));
         assert!(approx3(render.background.rgb, [0.05, 0.06, 0.09]));
         assert!(approx(render.mesh.vertical_scale, 1.0));
         assert_eq!((render.window.width, render.window.height), (1280, 720));
@@ -465,6 +475,16 @@ mod tests {
         };
         render_params_from_layers(&[default_layer(), overlay])
             .expect_err("a negative animation duration must fail garde validation");
+    }
+
+    #[test]
+    fn an_out_of_range_water_opacity_is_rejected() {
+        let overlay = Layer {
+            name: "local.toml".into(),
+            text: "[render.water]\nopacity = 1.5\n".into(),
+        };
+        render_params_from_layers(&[default_layer(), overlay])
+            .expect_err("a water opacity above 1.0 must fail garde validation (ADR 0023, Phase 2)");
     }
 
     #[test]

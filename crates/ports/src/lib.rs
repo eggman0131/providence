@@ -50,44 +50,53 @@ pub enum TerrainType {
 /// [`RendererPort`] to draw (ADR 0020 §1; grown per ADR 0023).
 ///
 /// It carries only *derived* data a renderer needs — the grid dimensions, a
-/// borrow of the row-major heights, and a borrow of the row-major per-vertex
-/// terrain [`types`](TerrainFrame::types) — and **no** simulation or camera/view
-/// state. The application builds one from the core's height field and its
-/// classification and passes it in; the renderer only ever sees this snapshot,
-/// never the core. Row-major: the vertex at `(x, y)` is `heights[y * width + x]`
-/// (and likewise `types`).
+/// borrow of the row-major heights, a borrow of the row-major per-vertex
+/// terrain [`types`](TerrainFrame::types), and the
+/// [`waterline`](TerrainFrame::waterline) datum — and **no** simulation or
+/// camera/view state. The application builds one from the core's height field,
+/// its classification, and `sim.worldgen.sea_level`, and passes it in; the
+/// renderer only ever sees this snapshot, never the core. Row-major: the vertex
+/// at `(x, y)` is `heights[y * width + x]` (and likewise `types`).
 ///
 /// The `types` slice may be **empty** for a frame built only to read heights —
 /// e.g. the picking snapshot, which never colours anything ([`type_at`] then
 /// yields `None`). A frame built to *draw* carries a full `width * height` slice.
+/// The `waterline` is the sea-level datum a renderer floats its water surface at
+/// (ADR 0023, Phase 2); a picking frame that never draws water passes any value
+/// (conventionally `0`) since nothing reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerrainFrame<'a> {
     width: u32,
     height: u32,
     heights: &'a [Height],
     types: &'a [TerrainType],
+    waterline: Height,
 }
 
 impl<'a> TerrainFrame<'a> {
-    /// Wrap a row-major height buffer and its per-vertex terrain types as a
-    /// drawable snapshot.
+    /// Wrap a row-major height buffer, its per-vertex terrain types, and the
+    /// sea-level `waterline` datum as a drawable snapshot.
     ///
     /// `heights` and `types` are each expected to be `width * height` long in
     /// row-major order; [`get`](TerrainFrame::get) / [`type_at`](TerrainFrame::type_at)
     /// bounds-check every access, so a mismatched (or, for `types`, deliberately
-    /// empty) buffer yields `None` rather than a panic.
+    /// empty) buffer yields `None` rather than a panic. `waterline` is the
+    /// `sim.worldgen.sea_level` datum the renderer draws its water surface at
+    /// (ADR 0023, Phase 2); a heights-only picking frame passes `0` (unread).
     #[must_use]
     pub const fn new(
         width: u32,
         height: u32,
         heights: &'a [Height],
         types: &'a [TerrainType],
+        waterline: Height,
     ) -> Self {
         Self {
             width,
             height,
             heights,
             types,
+            waterline,
         }
     }
 
@@ -114,6 +123,16 @@ impl<'a> TerrainFrame<'a> {
     #[must_use]
     pub const fn types(&self) -> &[TerrainType] {
         self.types
+    }
+
+    /// The sea-level datum (`sim.worldgen.sea_level`) the renderer floats its
+    /// water surface at (ADR 0023, Phase 2). Vertices at or below it are
+    /// underwater; land emerging above it reveals the coastline as the
+    /// alpha-blended water plane is occluded — so a shaping edit moves the
+    /// visible shoreline for free (the datum itself stays constant).
+    #[must_use]
+    pub const fn waterline(&self) -> Height {
+        self.waterline
     }
 
     /// The height at `(x, y)`, or `None` if the coordinate is out of bounds or

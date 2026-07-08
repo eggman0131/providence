@@ -286,6 +286,10 @@ pub struct RenderParams {
     /// `render.material.*` — how a vertex's terrain type (and, within mountains,
     /// its height) maps to colour (ADR 0023).
     pub material: MaterialParams,
+    /// `render.water.*` — the living water surface floated at the waterline
+    /// (ADR 0023, Phase 2): its colour, translucency, how far it sits above the
+    /// seabed, and its gentle animated shimmer.
+    pub water: WaterParams,
     /// `render.background.*` — the surface the world is drawn against.
     pub background: BackgroundParams,
     /// `render.mesh.*` — how the height field becomes a drawable surface.
@@ -383,6 +387,45 @@ pub struct MaterialParams {
     /// `render.material.peak_rgb` — snow the mountain band ramps toward at its
     /// highest vertices, linear RGB.
     pub peak_rgb: [f32; 3],
+}
+
+/// `render.water.*` — the living water surface (ADR 0023, Phase 2; issue #22).
+///
+/// A translucent plane floated at the waterline datum (`sim.worldgen.sea_level`,
+/// carried on the [derived snapshot](../../crates/ports/src/lib.rs)) and
+/// alpha-blended over the terrain, so land emerging above the waterline reveals
+/// the coastline — the shoreline tracks a shaping edit *for free*, derived
+/// against the live terrain every frame rather than baked (the Director's
+/// reactive-shoreline ruling). It is **alive**: a time-driven shimmer modulates
+/// its brightness, animated on an adapter-local wall-clock at the edge, so no
+/// float or clock value reaches the core (I3), exactly like the camera
+/// (ADR 0020 §3). Presentation only; because it carries floats it derives no
+/// `Eq` (like the rest of [`RenderParams`]). This ships the calm version; flow,
+/// foam, and turbulence are a later escalation the shape leaves room for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WaterParams {
+    /// `render.water.rgb` — the water surface colour, linear RGB (blended over
+    /// the seabed showing through, so a lighter tint than the seabed reads well).
+    pub rgb: [f32; 3],
+    /// `render.water.opacity` — base surface alpha in `[0, 1]`: `1` is opaque,
+    /// lower lets the seabed show through the shallows.
+    pub opacity: f32,
+    /// `render.water.surface_lift` — how far, in world units, the drawn surface
+    /// sits **above** the seabed datum. Worldgen pins the sea floor flat at the
+    /// waterline, so a small positive lift keeps the translucent sheet clear of
+    /// the coplanar floor (no z-fighting) and gives the sea a hair of body; kept
+    /// below one height step so it never rises over the first dry shore.
+    pub surface_lift: f32,
+    /// `render.water.ripple_amplitude` — how strongly the shimmer modulates the
+    /// surface brightness (`0` = a flat, still sea). Gentle by design.
+    pub ripple_amplitude: f32,
+    /// `render.water.ripple_speed` — how fast the shimmer travels (radians per
+    /// second of wall-clock). `0` freezes the pattern (a static sheen).
+    pub ripple_speed: f32,
+    /// `render.water.ripple_scale` — the shimmer's spatial frequency (radians per
+    /// world unit): larger packs finer ripples, `0` makes the whole sea pulse as
+    /// one.
+    pub ripple_scale: f32,
 }
 
 /// `render.background.*` — the clear colour the world is drawn against.

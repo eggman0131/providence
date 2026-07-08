@@ -137,6 +137,21 @@ land_rgb = [0.33, 0.49, 0.24]      # grassy lowland
 mountain_rgb = [0.45, 0.42, 0.38]  # bare rock at the mountain base
 peak_rgb = [0.92, 0.93, 0.95]      # snow toward the peaks
 
+[render.water]
+# The living water surface (ADR 0023, Phase 2; issue #22): a translucent plane
+# floated at the waterline datum (sim.worldgen.sea_level) and alpha-blended over
+# the terrain, so land rising above it reveals the coastline — the shoreline
+# tracks a shaping edit for free (the Director's reactive-shoreline ruling). It
+# is ALIVE: a gentle time-driven shimmer, animated on an adapter-local wall-clock
+# at the edge, so no clock/float value reaches the core (I3), like the camera.
+# This ships the calm version; flow/foam/turbulence are a later escalation.
+rgb = [0.11, 0.34, 0.52]   # water surface colour, linear RGB (a translucent blue)
+opacity = 0.72             # base surface alpha [0,1]; lower lets the seabed show through
+surface_lift = 0.2         # world units above the flat seabed the sheet sits (< one step)
+ripple_amplitude = 0.14    # shimmer brightness modulation (0 = a still sea)
+ripple_speed = 1.6         # shimmer travel speed, radians/second (0 freezes the pattern)
+ripple_scale = 0.55        # shimmer spatial frequency, radians/world unit
+
 [render.background]
 # Clear colour the world is drawn against, linear RGB.
 rgb = [0.05, 0.06, 0.09]

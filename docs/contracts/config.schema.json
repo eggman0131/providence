@@ -462,6 +462,62 @@
             "vertical_scale"
           ]
         },
+        "water": {
+          "description": "`render.water.*` — the living water surface (ADR 0023, Phase 2).",
+          "type": "object",
+          "properties": {
+            "opacity": {
+              "description": "`render.water.opacity` — base surface alpha, in `[0, 1]`.",
+              "type": "number",
+              "format": "float",
+              "maximum": 1.0,
+              "minimum": 0.0
+            },
+            "rgb": {
+              "description": "`render.water.rgb` — the water surface colour, linear RGB.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "ripple_amplitude": {
+              "description": "`render.water.ripple_amplitude` — shimmer brightness modulation.\nNon-negative; 0 is a still sea.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            },
+            "ripple_scale": {
+              "description": "`render.water.ripple_scale` — shimmer spatial frequency (radians/world\nunit). Non-negative; 0 makes the whole sea pulse as one.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            },
+            "ripple_speed": {
+              "description": "`render.water.ripple_speed` — shimmer travel speed (radians/second).\nNon-negative; 0 freezes the pattern.",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            },
+            "surface_lift": {
+              "description": "`render.water.surface_lift` — world units the drawn surface sits above the\nseabed datum. Non-negative (0 places it exactly on the flat seabed).",
+              "type": "number",
+              "format": "float",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "rgb",
+            "opacity",
+            "surface_lift",
+            "ripple_amplitude",
+            "ripple_speed",
+            "ripple_scale"
+          ]
+        },
         "window": {
           "description": "`render.window.*` — the on-screen surface (and headless-capture size).",
           "type": "object",
@@ -491,6 +547,7 @@
         "camera",
         "lighting",
         "material",
+        "water",
         "background",
         "mesh",
         "window",
